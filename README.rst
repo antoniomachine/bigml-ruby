@@ -3094,25 +3094,28 @@ A few examples:
 Ids of the first 5 sources created before April 1st, 2012
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-::
+.. code-block:: ruby 
+
     api.list_sources("limit=5;created__lt=2012-04-1")['objects'].collect { |it| it["resource"] }
 
 Name of the first 10 datasets bigger than 1MB
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-::
+.. code-block:: ruby 
+
     api.list_datasets("limit=10;size__gt=1048576")['objects'].collect { |it| it["name"] }
 
 Name of models with more than 5 fields (columns)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-::
+.. code-block:: ruby 
+
     api.list_models("columns__gt=5")['objects'].collect { |it| it["name"] }
 
 Ids of predictions whose model has not been deleted
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-::
+.. code-block:: ruby 
 
     api.list_predictions("model_status=true")['objects'].collect { |it| it["resource"] } 
 
@@ -3128,26 +3131,30 @@ A few examples:
 Name of sources ordered by size
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-::
+.. code-block:: ruby 
+
     api.list_sources("order_by=size")['objects'].collect { |it| it["name] }
 
 Number of instances in datasets created before April 1st, 2012 ordered by size
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-::
+.. code-block:: ruby 
+
     api.list_datasets("created__lt=2012-04-1;order_by=size")['objects'].collect { |it| it["rows"] }
 
 
 Model ids ordered by number of predictions (in descending order).
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-::
+.. code-block:: ruby 
+
     api.list_models("order_by=-number_of_predictions")['objects'].collect { |it| it["resource"] }
 
 Name of predictions ordered by name.
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-::
+.. code-block:: ruby 
+
     api.list_predictions("order_by=name")['objects'].collect { |it| it["name"] }
 
 
