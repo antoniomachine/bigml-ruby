@@ -30,10 +30,10 @@ in our `Campfire chatroom <https://bigmlinc.campfirenow.com/f20a0>`_.
 Supported Ruby Versions
 -----------------------
 
-Ruby 2.0.0
-Ruby 2.1.x
-Ruby 2.2.x
-Ruby 2.3.x
+-  Ruby 2.0.x
+-  Ruby 2.1.x
+-  Ruby 2.2.x
+-  Ruby 2.3.x
 
 Dependencies
 ------------
