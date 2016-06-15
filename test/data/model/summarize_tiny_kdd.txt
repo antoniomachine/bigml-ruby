@@ -1,0 +1,39 @@
+Data distribution:
+    0: 97.00% (194 instances)
+    0.01: 3.00% (6 instances)
+
+
+Predicted distribution:
+    0: 97.00% (194 instances)
+    0.01: 3.00% (6 instances)
+
+
+Field importance:
+    1. dst_host_count: 39.51%
+    2. src_bytes: 29.98%
+    3. count: 15.34%
+    4. dst_host_same_src_port_rate: 13.73%
+    5. dst_bytes: 1.44%
+
+
+Rules summary:
+
+0 : (data 97.00% / prediction 97.00%) 
+    · 43.81%: 167 < src_bytes <= 315  and dst_bytes <= 25045 and dst_host_count > 47 [Error: 0.00011]
+    · 35.05%: 167 < src_bytes <= 315  and dst_bytes <= 25045 and dst_host_count <= 43 [Error: 0.0002]
+    · 7.73%: src_bytes > 325 and dst_host_same_src_port_rate <= 0.75 [Error: 0.00136]
+    · 4.12%: src_bytes <= 315 and dst_bytes > 25045 and dst_host_count > 8 [Error: 0.00302]
+    · 3.61%: src_bytes <= 161 and dst_bytes <= 25045 [Error: 0.00293]
+    · 3.09%: 315 < src_bytes <= 323  and dst_host_same_src_port_rate <= 0.75 and count <= 10 [Error: 0.00447]
+    · 1.03%: 161 < src_bytes <= 167  and dst_bytes <= 25045 and dst_host_count > 97 [Error: 0.02075]
+    · 1.03%: 167 < src_bytes <= 315  and dst_bytes <= 25045 and 43 < dst_host_count <= 47  and count > 9 [Error: 0.01438]
+    · 0.52%: 167 < src_bytes <= 315  and dst_bytes <= 25045 and 44 < dst_host_count <= 47  and count <= 9 [Error: 0.05268]
+
+
+0.01 : (data 3.00% / prediction 3.00%) 
+    · 16.67%: 161 < src_bytes <= 167  and dst_bytes <= 25045 and dst_host_count <= 97 [Error: 0.02934]
+    · 16.67%: 167 < src_bytes <= 315  and dst_bytes <= 25045 and 43 < dst_host_count <= 44  and count <= 9 [Error: 0.05268]
+    · 16.67%: src_bytes <= 315 and dst_bytes > 25045 and dst_host_count <= 8 [Error: 0.00855]
+    · 16.67%: 323 < src_bytes <= 325  and dst_host_same_src_port_rate <= 0.75 and count <= 10 [Error: 0.01095]
+    · 16.67%: 315 < src_bytes <= 325  and dst_host_same_src_port_rate <= 0.75 and count > 10 [Error: 0.01254]
+    · 16.67%: src_bytes > 315 and dst_host_same_src_port_rate > 0.75 [Error: 0.0061]
