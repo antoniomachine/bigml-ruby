@@ -85,7 +85,7 @@ module BigML
 
     if resource.key?('object')
        if resource['object'].nil?
-          raise ArgumentError, "The resource has no status info\n" + resource
+          raise ArgumentError, "The resource has no status info %s" % resource
        end
        resource = resource["object"]
     end
@@ -185,7 +185,7 @@ module BigML
     return get_resource( BigML::STATISTICAL_TEST_PATH, statistical_test)
   end
 
-  def self.get_logistic_regression_id(logistic_regression)
+  def self.get_logisticregression_id(logistic_regression)
     #Returns a logisticregression/id.
     return get_resource( BigML::LOGISTIC_REGRESSION_PATH, logistic_regression)
   end
@@ -246,7 +246,7 @@ module BigML
      # until the resource is in a final state (either FINISHED
      # for FAULTY. The number of retries can be limited using the retries
      # parameter.
-     
+    
      def self.get_kwargs(resource_id, query_string)
         BigML::NO_QS.each do |resource_re|
            return {} if resource_re.match(resource_id)
@@ -276,7 +276,9 @@ module BigML
      end
     
      if resource.is_a?(String)
-        resource = get_method.call(resource,  kwargs)
+        resource = get_method.call(resource, kwargs.fetch("query_string", nil), 
+                                   kwargs.fetch("shared_username", nil), 
+                                   kwargs.fetch("shared_api_key", nil))
      end
 
      counter=0
@@ -287,10 +289,11 @@ module BigML
        if code == BigML::FINISHED
           if counter > 1 
              # final get call to retrieve complete resource
-             resource = get_method.call(resource, kwargs)
+             resource = get_method.call(resource, kwargs.fetch("query_string", nil))
           end
-          
-          exception_on_error(resource) if raise_on_error
+          if raise_on_error 
+             exception_on_error(resource)
+          end 
           return resource
        elsif code == BigML::FAULTY
           raise ArgumentError, status
@@ -305,13 +308,12 @@ module BigML
          tiny_kwargs = {}
        end
 
-       resource = get_method.call(resource, tiny_kwargs)
+       resource = get_method.call(resource, tiny_kwargs.fetch("query_string", nil))
      end
 
      if raise_on_error
         exception_on_error(resource)
      end
-
      return resource
   end
 
@@ -328,7 +330,7 @@ module BigML
      #  resources and auxiliar utilities to check their status. It should not
      #  be instantiated independently.
 
-     def get_resource(resource, options = {})
+     def get_resource(resource, query_string=nil, shared_username=nil, shared_api_key=nil)
         # Retrieves a remote resource.
         # The resource parameter should be a string containing the
         # resource id or the dict returned by the corresponding create method.
@@ -350,9 +352,9 @@ module BigML
 
         unless resource_id.nil?
            return self._get("#{@url}#{resource_id}", 
-	                    options.fetch("query_string", nil), 
-			    options.fetch("shared_username", nil),
-			    options.fetch("shared_api_key", nil))
+	                    query_string, 
+			    shared_username,
+			    shared_api_key)
         end
      end
 
@@ -361,7 +363,7 @@ module BigML
         # Waits until the resource is finished or faulty, updates it and
         # returns True on success
         if BigML::http_ok(resource)
-            resource.merge(BigML::check_resource(resource, nil, query_string, 
+            resource.merge!(BigML::check_resource(resource, nil, query_string,
                                            wait_time, retries, raise_on_error,
                                            self))
             return true

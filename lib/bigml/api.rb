@@ -35,6 +35,8 @@ module BigML
 
   class Api < ResourceHandler
 
+     attr_reader :storage
+
      def initialize(username = nil, api_key = nil, dev_mode = false, 
                     debug = false, set_locale = false, storage = nil, domain = nil)
          super(username, api_key, dev_mode, debug, set_locale, storage, domain)
@@ -240,7 +242,7 @@ module BigML
            raise 'Request Timeout'
         rescue RestClient::Exception => e
            code = HTTP_INTERNAL_SERVER_ERROR
-           return maybe_save(resource_id, @storage, code,
+           return Util::maybe_save(resource_id, @storage, code,
                              location, resource, error)
         end
 
@@ -471,7 +473,7 @@ module BigML
           end
 
        else
-          dataset = BigML::get_dataset_id(dataset)
+          dataset_id = BigML::get_dataset_id(dataset)
        end
       
        unless dataset_id.nil?
@@ -640,7 +642,7 @@ module BigML
                                 true, self)
 
        elsif resource_type == LOGISTIC_REGRESSION_PATH
-          logistic_regression_id = BigML::get_logistic_regression_id(model)
+          logistic_regression_id = BigML::get_logisticregression_id(model)
           BigML::check_resource(logistic_regression_id, nil, BigML::TINY_RESOURCE,
                                 wait_time, retries,
                                 true, self)
@@ -847,14 +849,14 @@ module BigML
         return _create(@ensemble_url, body)
      end
 
-     def get_ensemble(ensemble, query_string='')
+     def get_ensemble(ensemble, query_string='', shared_username=nil, shared_api_key=nil)
         #Retrieves a prediction
 
         BigML::check_resource_type(ensemble, ENSEMBLE_PATH, "A ensemble id is needed.")
         ensemble_id = BigML::get_ensemble_id(ensemble)
 
-        unless luster_id.nil?
-          return _get(@url+predicion_id, query_string)
+        unless ensemble_id.nil?
+          return _get(@url+ensemble_id, query_string)
         end
      end
 
@@ -1461,49 +1463,49 @@ module BigML
      # https://bigml.com/developers/logisticregressions
      ##########################################################################
 
-     def create_logistic_regression(datasets, args=nil, wait_time=3, retries=10)
+     def create_logisticregression(datasets, args=nil, wait_time=3, retries=10)
         # Creates a logistic regression from a `dataset`
         # of a list o `datasets`
-        create_args = set_create_from_datasets_args(datasets,args, wait_time, retries, nil)
+        create_args = _set_create_from_datasets_args(datasets,args, wait_time, retries, nil)
         body = JSON.generate(create_args)
         return _create(@logistic_regression_url, body)
      end
 
-     def logistic_regression_is_ready(logistic_regression, args={})
+     def logisticregression_is_ready(logistic_regression, args={})
        #Check whether a logistic regression status is FINISHED.
        BigML::check_resource_type(logistic_regression, LOGISTIC_REGRESSION_PATH, "A logistic regression id is needed.")
-       logistic_regression = BigML::get_logistic_regression(logistic_regression, args.fetch("query_string", nil))
+       logistic_regression = BigML::get_logisticregression(logistic_regression, args.fetch("query_string", nil))
        return BigML::resource_is_ready(logistic_regression)
      end
 
-     def get_logistic_regression(logistic_regression, query_string='')
+     def get_logisticregression(logistic_regression, query_string='',  shared_username=nil, shared_api_key=nil)
         # Retrieves a logistic regression.
         BigML::check_resource_type(logistic_regression, LOGISTIC_REGRESSION_PATH, "A logistic regression id is needed.")
-        logistic_regression_id = BigML::get_logistic_regression_id(logistic_regression)
+        logistic_regression_id = BigML::get_logisticregression_id(logistic_regression)
 
         unless logistic_regression_id.nil?
-          return _get(@url+logistic_regression_id, query_string)
+          return _get(@url+logistic_regression_id, query_string, shared_username, shared_api_key)
         end
      end
 
-     def list_logistic_regressions(query_string='')
+     def list_logisticregressions(query_string='')
         # Lists all your logistic regression.
         return _list(@logistic_regression_url, query_string)
      end
 
-     def update_logistic_regression(logistic_regression, changes)
+     def update_logisticregression(logistic_regression, changes)
         # Updates a logistic regression. 
         BigML::check_resource_type(logistic_regression, LOGISTIC_REGRESSION_PATH, "A logistic regression is needed.")
-        logistic_regression_id = BigML::get_logistic_regression_id(logistic_regression)
+        logistic_regression_id = BigML::get_logisticregression_id(logistic_regression)
         unless logistic_regression_id.nil?
           return _update(@url+logistic_regression_id, JSON.generate(changes))
         end
      end
 
-     def delete_logistic_regression(logistic_regression)
+     def delete_logisticregression(logistic_regression)
         # Deletes a logistic_regression.
         BigML::check_resource_type(logistic_regression, LOGISTIC_REGRESSION_PATH, "A logistic regression id is needed.")
-        logistic_regression_id = BigML::get_logistic_regression_id(logistic_regression)
+        logistic_regression_id = BigML::get_logisticregression_id(logistic_regression)
         unless logistic_regression_id.nil?
           return _delete(@url+logistic_regression_id)
         end

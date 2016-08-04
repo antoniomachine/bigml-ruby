@@ -1,7 +1,6 @@
 require "test/unit"
 require_relative "../lib/bigml/api"
 
-
 class TestPredicction < Test::Unit::TestCase
 
   def setup
@@ -30,7 +29,8 @@ class TestPredicction < Test::Unit::TestCase
     puts "Scenario: Successfully creating a prediction:"
   
     data.each do |item|
-       puts
+
+       puts 
        puts "Given I create a data source uploading a " + item["filename"] + " file"
        source = @api.create_source(item["filename"], {'name'=> 'source_test', 'project'=> @project["resource"]})
 

@@ -14,8 +14,9 @@ Gem::Specification.new do |spec|
   spec.description   = %q{BigML makes machine learning easy by taking care of the details required to add data-driven decisions and predictive power to your company. Unlike other machine learning services, BigML creates beautiful predictive models that can be easily understood and interacted with}
   spec.homepage      = "https://github.com/antoniomachine/bigml-ruby"
 
-  spec.add_runtime_dependency     'rest-client'
-  spec.add_runtime_dependency     'json'
+  spec.add_runtime_dependency     'rest-client', '~> 1.8'
+  spec.add_runtime_dependency     'json', '~> 1.8'
+  spec.add_runtime_dependency     'activesupport', '~> 3' 
 
   spec.files         = Dir['lib/   *.rb'] + Dir['lib/**/*.rb']
   spec.executables   = spec.files.grep(%r{^bin/}).map{ |f| File.basename(f) }
@@ -24,5 +25,7 @@ Gem::Specification.new do |spec|
 
   spec.add_development_dependency "bundler", "~> 1.12"
   spec.add_development_dependency "rake", "~> 10.0"
+
+  spec.licenses    = ['MIT']
 
 end

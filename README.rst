@@ -38,7 +38,8 @@ Supported Ruby Versions
 Dependencies
 ------------
 
-rest-client 
+- rest-client 
+- activesupport
 
 Installation
 ------------
@@ -2687,7 +2688,7 @@ you will get the same datasets as a result and they will be complementary:
     test_dataset = api.create_dataset(
         origin_dataset, {"name" => "Dataset Name | Test",
                          "sample_rate" => 0.8, "seed" => "my seed",
-                         "out_of_bag" => True})
+                         "out_of_bag" => true})
 
 It is also possible to generate a dataset from a list of datasets
 (multidataset):
@@ -3317,71 +3318,1043 @@ access your shared models.
 
 Local Models
 ------------
-Coming Soon
+
+You can instantiate a local version of a remote model.
+
+.. code-block:: ruby 
+
+    local_model = BigML::Model.new('model/502fdbff15526876610002615')
+
+This will retrieve the remote model information, using an implicitly built
+``BigML()`` connection object (see the ``Authentication`` section for more
+details on how to set your credentials) and return a Model object
+that you can use to make local predictions. If you want to use a
+specfic connection object for the remote retrieval, you can set it as second
+parameter:
+
+.. code-block:: ruby 
+
+    local_model = BigML::Model.new('model/502fdbff15526876610002615',
+                               BigML::Api.new(myusername, my_api_key))
+
+or even use the remote model information retrieved previously to build the
+local model object:
+
+.. code-block:: ruby
+
+    api = BigML::Api.new()
+    model = api.get_model('model/502fdbff15526876610002615',
+                          'only_model=true;limit=-1')
+
+    local_model = BigML::Model.new(model)
+
+Any of these methods will return a Model object that you can use to make
+local predictions, generate IF-THEN rules, Tableau rules
+or a Python function that implements the model.
+
+Beware of using filtered fields models to instantiate a local model. The local
+model methods need the important fields in the ``model`` parameter to be
+available. If an important field is missing (because it has been excluded or
+filtered), an exception will arise. To avoid that, the last example uses a
+particular ``query_string`` parameter that will ensure that the needed
+fields information structure is returned in the get call.
+
+You can also build a local model from a model previously retrieved and stored
+in a JSON file:
+
+.. code-block:: ruby
+
+    local_model = BigML::Model.new('./my_model.json')
 
 Local Predictions
 -----------------
-Coming Soon
+
+Once you have a local model you can use to generate predictions locally.
+
+.. code-block:: ruby
+
+    local_model.predict({"petal length" => 3, "petal width" => 1})
+    petal length > 2.45 AND petal width <= 1.65 AND petal length <= 4.95 =>
+    Iris-versicolor
+
+Local predictions have three clear advantages:
+
+- Removing the dependency from BigML to make new predictions.
+
+- No cost (i.e., you do not spend BigML credits).
+
+- Extremely low latency to generate predictions for huge volumes of data.
+
+The default output for local predictions is the prediction itself, but you can
+also add the associated confidence, the distribution, and the number
+of instances in the final node by using some additional arguments. To obtain
+a dictionary with the prediction, confidence and rules:
+
+.. code-block:: ruby
+
+    # add_confidence=true add_path=true
+    local_model.predict({"petal length" => 3, "petal width" => 1},
+                        true, false, $STDOUT, false, BigML::LAST_PREDICTION,
+                        true, true)
+ 
+that will return:
+
+.. code-block:: ruby
+
+    {'path' => ['petal length > 2.35',
+                'petal width <= 1.75',
+                'petal length <= 4.95',
+                'petal width <= 1.65'],
+     'confidence' => 0.91033,
+     'prediction' => 'Iris-versicolor'}
+
+Note that the ``add_path`` argument for the ``proportional`` missing strategy
+shows the path leading to a final unique node, that gives the prediction, or
+to the first split where a missing value is found. Other options are
+``add_next`` which includes the field that determines the next split after
+the prediction node and ``add_distribution`` that adds the distribution
+that leads to the prediction. For regression models, ``add_min`` and
+``add_max`` will add the limit values for the data that supports the
+prediction.
+
+In classification models, the prediction is always the most frequent category
+amongst the ones that form the distribution in the predicted node. However, you
+might want to get the complete list of the categories in the predicted node,
+together with their confidence. Using the ``multiple`` argument you will get
+the list of categories with their associated information.
+
+.. code-block:: ruby
+    # multiple = 'all'
+    local_model.predict({"petal length": 3}, true, false, $STDOUT,
+                         false, BigML::LAST_PREDICTION, false, false,
+                         false, false, false, false, false, false, 
+                         'all')
+
+will result in
+
+.. code-block:: ruby
+
+    [{'count' => 50,
+      'confidence' => 0.2628864565745068,
+      'prediction' => u'Iris-setosa',
+      'probability' => 0.3333333333333333},
+     {'count' => 50,
+      'confidence' => 0.2628864565745068,
+      'prediction' => u'Iris-versicolor',
+      'probability' => 0.3333333333333333},
+     {'count' => 50,
+      'confidence' => 0.2628864565745068,
+      'prediction' => u'Iris-virginica',
+      'probability' => 0.3333333333333333}]
+
+The argument can be set to ``all`` to obtain the complete
+list or to an integer``n``, in which case you will obtain the top ``n``
+predictions.
+
+When your test data has missing values, you can choose between
+``last prediction``
+or ``proportional`` strategy to compute the prediction. The `last prediction`
+strategy is the one used by default. To compute a prediction, the algorithm
+goes down the model's decision tree and checks the condition it finds at
+each node (e.g.: 'sepal length' > 2). If the field checked is missing in your
+input data you have two options: by default (``last prediction`` strategy)
+the algorithm will stop and issue the last prediction
+it computed in the previous node. If you chose ``proportional`` strategy
+instead, the algorithm will continue to go down the tree considering both
+branches from that node on. Thus, it will store a list of possible predictions
+from then on,
+one per valid node. In this case, the final prediction will be the majority
+(for categorical models) or the average (for regressions) of values predicted
+by the list of predicted values.
+
+You can set this strategy by using the ``missing_strategy``
+argument with code ``0`` to use ``last prediction`` and ``1`` for
+``proportional``.
+
+.. code-block:: ruby
+
+    # LAST_PREDICTION = 0; PROPORTIONAL = 1
+    local_model.predict({"petal length": 3, "petal width": 1},
+                        true, false, $STDOUT, false,
+                        BigML::PROPORTIONAL)
 
 Local Clusters
 --------------
-Coming Soon
+
+You can also instantiate a local version of a remote cluster.
+
+.. code-block:: ruby
+
+    local_cluster = BigML::Cluster.new('cluster/502fdbff15526876610002435')
+
+This will retrieve the remote cluster information, using an implicitly built
+``BigML()`` connection object (see the ``Authentication`` section for more
+details on how to set your credentials) and return a ``Cluster`` object
+that you can use to make local centroid predictions. If you want to use a
+specfic connection object for the remote retrieval, you can set it as second
+parameter:
+
+.. code-block:: ruby
+
+    local_cluster = BigML::Cluster.new('cluster/502fdbff15526876610002435',
+                                   BigML::Api.new(my_username,
+                                    my_api_key))
+
+or even use the remote cluster information retrieved previously to build the
+local cluster object:
+
+.. code-block:: ruby
+
+    api = BigML::Api.new()
+    cluster = api.get_cluster('cluster/502fdbff15526876610002435',
+                              'limit=-1')
+
+    local_cluster = BigML::Cluster.new(cluster)
+
+Note that in this example we used a ``limit=-1`` query string for the cluster
+retrieval. This ensures that all fields are retrieved by the get method in the
+same call (unlike in the standard calls where the number of fields returned is
+limited).
+
 
 Local Centroids
 ---------------
-Coming Soon
+
+Using the local cluster object, you can predict the centroid associated to
+an input data set:
+
+.. code-block:: ruby
+
+    local_cluster.centroid({"pregnancies" => 0, "plasma glucose" => 118,
+                            "blood pressure" => 84, "triceps skin thickness" => 47,
+                            "insulin" => 230, "bmi" => 45.8,
+                            "diabetes pedigree" => 0.551, "age" => 31,
+                            "diabetes" => "true"})
+    {'distance' => 0.454110207355, 'centroid_name' => 'Cluster 4',
+     'centroid_id' => '000004'}
+
+
+You must keep in mind, though, that to obtain a centroid prediction, input data
+must have values for all the numeric fields. No missing values for the numeric
+fields are allowed.
+
+As in the local model predictions, producing local centroids can be done
+independently of BigML servers, so no cost or connection latencies are
+involved.
 
 Local Anomaly Detector
 ----------------------
-Coming Soon
+
+You can also instantiate a local version of a remote anomaly.
+
+.. code-block:: ruby
+
+    local_anomaly = BigML::Anomaly('anomaly/502fcbff15526876610002435')
+
+This will retrieve the remote anomaly detector information, using an implicitly
+built ``BigML()`` connection object (see the ``Authentication`` section for
+more details on how to set your credentials) and return an ``Anomaly`` object
+that you can use to make local anomaly scores. If you want to use a
+specfic connection object for the remote retrieval, you can set it as second
+parameter:
+
+.. code-block:: ruby
+
+    local_anomaly = BigML::Anomaly.new('anomaly/502fcbff15526876610002435',
+                                    BigML::Api.new(my_username,
+                                      my_api_key))
+
+or even use the remote anomaly information retrieved previously to build the
+local anomaly detector object:
+
+.. code-block:: ruby
+
+    api = BigML::Api.new()
+    anomaly = api.get_anomaly('anomaly/502fcbff15526876610002435',
+                              'limit=-1')
+
+    local_anomaly = BigML::Anomaly.new(anomaly)
+
+Note that in this example we used a ``limit=-1`` query string for the anomaly
+retrieval. This ensures that all fields are retrieved by the get method in the
+same call (unlike in the standard calls where the number of fields returned is
+limited).
+
+The anomaly detector object has also the method ``anomalies_filter``
+that will build the LISP filter you would need to filter the original
+dataset and create a new one excluding
+the top anomalies. Setting the ``include`` parameter to true you can do the
+inverse and create a dataset with only the most anomalous data points.
+
 
 Local Anomaly Scores
 --------------------
-Coming Soon
+
+Using the local anomaly detector object, you can predict the anomaly score
+associated to an input data set:
+
+.. code-block:: ruby
+
+    local_anomaly.anomaly_score({"src_bytes" => 350})
+    0.9268527808726705
+
+
+As in the local model predictions, producing local anomaly scores can be done
+independently of BigML servers, so no cost or connection latencies are
+involved.
 
 Local Logistic Regression
 -------------------------
-Coming Soon
+
+You can also instantiate a local version of a remote logistic regression.
+
+.. code-block:: ruby
+
+    local_log_regression = BigML::Logistic.new(
+        'logisticregression/502fdbff15526876610042435')
+
+This will retrieve the remote logistic regression information,
+using an implicitly built
+``BigML()`` connection object (see the ``Authentication`` section for more
+details on how to set your credentials) and return a ``LogisticRegression``
+object that you can use to make local predictions. If you want to use a
+specfic connection object for the remote retrieval, you can set it as second
+parameter:
+
+.. code-block:: ruby
+
+    local_log_regression = BigML::Logistic.new(
+        'logisticregression/502fdbff15526876610602435',
+        BigML::Api.new(my_username, my_api_key))
+
+You can also reuse a remote logistic regression JSON structure
+as retrieved previously to build the
+local logistic regression object:
+
+.. code-block:: ruby
+
+    api = BigML::Api.new
+    logistic_regression = api.get_logisticregression(
+        'logisticregression/502fdbff15526876610002435',
+        'limit=-1')
+
+    local_log_regression = BigML::Logistic.new(logistic_regression)
+
+Note that in this example we used a ``limit=-1`` query string for the logistic
+regression retrieval. This ensures that all fields are retrieved by the get
+method in the
+same call (unlike in the standard calls where the number of fields returned is
+limited).
 
 Local Logistic Regression Predictions
 -------------------------------------
-Coming Soon
+
+Using the local logistic regression object, you can predict the prediction for
+an input data set:
+
+.. code-block:: ruby
+
+    local_log_regression.predict({"petal length" => 2, "sepal length" => 1.5,
+                                  "petal width" => 0.5, "sepal width" => 0.7})
+    {'distribution' => [
+        {'category' => 'Iris-virginica', 'probability' => 0.5041444478857267},
+        {'category' => 'Iris-versicolor', 'probability' => 0.46926542042788333},
+        {'category' => 'Iris-setosa', 'probability' => 0.02659013168639014}],
+        'prediction' => u'Iris-virginica', 'probability' => 0.5041444478857267}
+
+As you can see, the prediction contains the predicted category and the
+associated probability. It also shows the distribution of probabilities for
+all the possible categories in the objective field.
+
+You must keep in mind, though, that to obtain a logistic regression
+prediction, input data
+must have values for all the numeric fields. No missing values for the numeric
+fields are allowed.
 
 Local Association
 -----------------
-Coming Soon
+
+
+You can also instantiate a local version of a remote association resource.
+
+.. code-block:: ruby
+
+    local_association = BigML::Association.new('association/502fdcff15526876610002435')
+
+This will retrieve the remote association information, using an implicitly
+built
+``BigML()`` connection object (see the ``Authentication`` section for more
+details on how to set your credentials) and return an ``Association`` object
+that you can use to extract the rules found in the original dataset.
+If you want to use a
+specfic connection object for the remote retrieval, you can set it as second
+parameter:
+
+.. code-block:: ruby
+
+    local_association = BigML::Association.new('association/502fdcff15526876610002435',
+                                              BigML::Api.new(my_username,
+                                              my_api_key))
+
+or even use the remote association information retrieved previously
+to build the
+local association object:
+
+.. code-block:: ruby
+
+    api = BigML::Api.new
+    association = api.get_association('association/502fdcff15526876610002435',
+                                      'limit=-1')
+
+    local_association = BigML::Association.new(association)
+
+Note that in this example we used a ``limit=-1`` query string for the
+association retrieval. This ensures that all fields are retrieved by the get
+method in the
+same call (unlike in the standard calls where the number of fields returned is
+limited).
+
+The created ``Association`` object has some methods to help retrieving the
+association rules found in the original data. The ``get_rules`` method will
+return the association rules. Arguments can be set to filter the rules
+returned according to its ``leverage``, ``strength``, ``support``, ``p_value``,
+a list of items involved in the rule or a user-given filter function.
+
+.. code-block:: ruby
+
+    local_association = BigML::Association.new('association/502fdcff15526876610002435')
+    # item_list=["Edible"], min_p_value=0.3
+    local_association.get_rules(nil, nil, nil, 0.3,["Edible"])
+
+
+In this example, the only rules that will be returned by the ``get_rules``
+method will be the ones that mention ``Edible`` and their ``p_value``
+is greater or equal to ``0.3``.
+
+The rules can also be stored in a CSV file using ``rules_csv``:
+
+
+.. code-block:: ruby
+
+    local_association = BigML::Association.new('association/502fdcff15526876610002435')
+    local_association.rules_csv('./tmp/my_rules.csv',
+                               {'min_strength' => 0.1})
+
+This example will store the rules whose strength is bigger or equal to 0.1 in
+the ``./tmp/my_rules.csv`` file.
+
+You can also obtain the list of ``items`` parsed in the dataset using the
+``get_items`` method. You can also filter the results by field name, by
+item names and by a user-given function:
+
+.. code-block:: ruby
+
+    local_association = BigML::Association.new('association/502fdcff15526876610002435')
+    # field="Cap Color", names=["Brown cap", "White cap", "Yellow cap"]
+    local_association.get_items("Cap Color",
+                                ["Brown cap", "White cap", "Yellow cap"])
+
+
+This will recover the ``Item`` objects found in the ``Cap Color`` field for
+the names in the list, with their properties as described in the
+`developers section <https://bigml.com/developers/associations#ad_retrieving_an_association>`_
+
 
 Local Association Sets
 ----------------------
-Coming Soon
+
+Using the local association object, you can predict the association sets
+related to an input data set:
+
+.. code-block:: python
+
+    local_association.association_set( \
+        {"gender" => "Female", "genres" => "Adventure$Action", \
+         "timestamp" => 993906291, "occupation" => "K-12 student",
+         "zipcode" => 59583, "rating" => 3})
+    [{'item' => {'bin_end' => nil,
+               'bin_start'=> nie,
+               'complement' => false,
+               'count' => 70,
+               'description' => nil,
+               'field_id' => u'000002',
+               'name' => u'Under 18'},
+      'score' => 0.0969181441561211},
+     {'item' =>  {'bin_end' =>  nil,
+               'bin_start' =>  nil,
+               'complement' =>  false,
+               'count' =>  216,
+               'description' =>  nil,
+               'field_id' =>  u'000007',
+               'name' =>  u'Drama'},
+      'score' =>  0.025050115102862636},
+     {'item' =>  {'bin_end' =>  nil,
+               'bin_start' =>  nil,
+               'complement' =>  false,
+               'count' =>  108,
+               'description' =>  nil,
+               'field_id' =>  u'000007',
+               'name' =>  u'Sci-Fi'},
+      'score' =>  0.02384578264599424},
+     {'item' =>  {'bin_end' =>  nil,
+               'bin_start' =>  nil,
+               'complement' =>  false,
+               'count' =>  40,
+               'description' =>  nil,
+               'field_id' =>  u'000002',
+               'name' =>  u'56+'},
+      'score' =>  0.021845366022721312},
+     {'item' =>  {'bin_end' =>  nil,
+               'bin_start' =>  nil,
+               'complement' =>  false,
+               'count' =>  66,
+               'description' =>  nil,
+               'field_id' =>  u'000002',
+               'name' =>  u'45-49'},
+      'score' =>  0.019657155185835006}]
+
+As in the local model predictions, producing local association sets can be done
+independently of BigML servers, so no cost or connection latencies are
+involved.
 
 Multi Models
 ------------
-Coming Soon
+
+Multi Models use a numbers of BigML remote models to build a local version
+that can be used to generate predictions locally. Predictions are generated
+combining the outputs of each model.
+
+.. code-block:: ruby
+
+    api = BigML::Api.new
+
+    models = api.list_models("tags__in=my_ta")["objects"]
+    model = BigML::Api.MultiModel(models.collect{| m| m["resource"]})
+
+    model.predict({"petal length" => 3, "petal width" => 1})
+
+This will create a multi model using all the models that have been previously
+tagged with ``my_tag`` and predict by combining each model's prediction.
+The combination method used by default is ``plurality`` for categorical
+predictions and mean value for numerical ones. You can also use ``confidence
+weighted``:
+
+.. code-block:: ruby
+
+    # method=1
+    model.predict({"petal length" => 3, "petal width" => 1}, true, 1)
+
+that will weight each vote using the confidence/error given by the model
+to each prediction, or even ``probability weighted``:
+
+.. code-block:: ruby
+    # method = 2
+    model.predict({"petal length" => 3, "petal width" => 1}, true, 2)
+
+that weights each vote by using the probability associated to the training
+distribution at the prediction node.
+
+There's also a ``threshold`` method that uses an additional set of options:
+threshold and category. The category is predicted if and only if
+the number of predictions for that category is at least the threshold value.
+Otherwise, the prediction is plurality for the rest of predicted values.
+
+An example of ``threshold`` combination method would be:
+
+.. code-block:: ruby
+
+    # method = 3, options = {'threshold' => 3, 'category' => 'Iris-virginica'}
+    model.predict({'petal length' => 0.9, 'petal width' => 3.0}, true, 3,
+                   false, {'threshold' => 3, 'category' => 'Iris-virginica'})
+
+
+When making predictions on a test set with a large number of models,
+``batch_predict`` can be useful to log each model's predictions in a
+separated file. It expects a list of input data values and the directory path
+to save the prediction files in.
+
+.. code-block:: python
+
+    model.batch_predict([{"petal length" => 3, "petal width" => 1},
+                         {"petal length" => 1, "petal width" => 5.1}],
+                        "data/predictions")
+
+The predictions generated for each model will be stored in an output
+file in `data/predictions` using the syntax
+`model_[id of the model]__predictions.csv`. For instance, when using
+`model/50c0de043b563519830001c2` to predict, the output file name will be
+`model_50c0de043b563519830001c2__predictions.csv`. An additional feature is
+that using ``reuse=true`` as argument will force the function to skip the
+creation of the file if it already exists. This can be
+helpful when using repeatedly a bunch of models on the same test set.
+
+.. code-block:: ruby 
+    # reuse = true
+    model.batch_predict([{"petal length" => 3, "petal width" => 1},
+                         {"petal length" => 1, "petal width" => 5.1}],
+                        "data/predictions", true, true)
+
+Prediction files can be subsequently retrieved and converted into a votes list
+using ``batch_votes``:
+
+.. code-block:: ruby
+
+    model.batch_votes("data/predictions")
+
+which will return a list of MultiVote objects. Each MultiVote contains a list
+of predictions (e.g. ``[{'prediction' => u'Iris-versicolor', 'confidence' => 0.34,
+'order' => 0}, {'prediction' => u'Iris-setosa', 'confidence' => 0.25,
+'order' => 1}]``).
+These votes can be further combined to issue a final
+prediction for each input data element using the method ``combine``
+
+.. code-block:: ruby
+
+    model.batch_votes("data/predictions").each do | multivote|
+        prediction = multivote.combine()
+    end
+
+Again, the default method of combination is ``plurality`` for categorical
+predictions and mean value for numerical ones. You can also use ``confidence
+weighted``:
+
+.. code-block:: ruby
+
+    prediction = multivote.combine(1)
+
+or ``probability weighted``:
+
+.. code-block:: ruby
+
+    prediction = multivote.combine(2)
+
+You can also get a confidence measure for the combined prediction:
+
+.. code-block:: ruby
+
+    prediction = multivote.combine(0,true)
+
+For classification, the confidence associated to the combined prediction
+is derived by first selecting the model's predictions that voted for the
+resulting prediction and computing the weighted average of their individual
+confidence. Nevertheless, when ``probability weighted`` is used,
+the confidence is obtained by using each model's distribution at the
+prediction node to build a probability distribution and combining them.
+The confidence is then computed as the wilson score interval of the
+combined distribution (using as total number of instances the sum of all
+the model's distributions original instances at the prediction node)
+
+In regression, all the models predictions' confidences contribute
+to the weighted average confidence.
 
 Local Ensembles
 ---------------
-Coming Soon
+
+Remote ensembles can also be used locally through the ``Ensemble``
+class. The simplest way to access an existing ensemble and using it to
+predict locally is:
+
+.. code-block:: ruby
+
+    ensemble = BigML::Ensemble.new('ensemble/5143a51a37203f2cf7020351')
+    ensemble.predict({"petal length" => 3, "petal width" => 1})
+
+This call will download all the ensemble related info and store it in a
+``./storage`` directory ready to be used to predict. As in
+``MultipleModel``, several prediction combination methods are available, and
+you can choose another storage directory or even avoid storing at all, for
+instance:
+
+.. code-block:: ruby
+
+    # api connection with storage 'my_storage'
+    api = BigML::Api.new(nil,nil, false, false, false,'./my_storage')
+
+    # creating ensemble
+    ensemble = api.create_ensemble('dataset/5143a51a37203f2cf7000972')
+
+    # Ensemble object to predict
+    ensemble = BigML::Ensemble.new(ensemble, api)
+    # predict with method = 1
+    ensemble.predict({"petal length" => 3, "petal width" => 1}, true, 1)
+
+creates a new ensemble and stores its information in ``./my_storage``
+folder. Then this information is used to predict locally using the
+``confidence weighted`` method.
+
+Similarly, local ensembles can also be created by giving a list of models to be
+combined to issue the final prediction:
+
+.. code-block:: ruby 
+
+    ensemble = Ensemble(['model/50c0de043b563519830001c2',
+                         'model/50c0de043b5635198300031b')]
+    ensemble.predict({"petal length" => 3, "petal width" => 1})
+
+or even a JSON file that contains the ensemble resource:
+
+.. code-block:: ruby
+
+    api = BigML::Api.new()
+    ensemble_info = api.get_ensemble('ensemble/50c0de043b5635198300033c')
+  
+    File.open('./my_ensemble', 'w') do | f|
+      f.puts JSON.genarate(ensemble_info)
+    end    
+
+    local_ensemble = BigML::Ensemble.new("./my_ensemble")
+
+Note: the ensemble JSON structure is not self-contained, meaning that it
+contains references to the models that the ensemble is build of, but not the
+information of the models themselves.
+To use an ensemble locally with no connection to
+the internet, you must make sure that not only a local copy of the ensemble
+JSON file is available in your computer, but also the JSON files corresponding
+to the models in it. This is automatically achieved when you use the
+``Ensemble('ensemble/50c0de043b5635198300033c')`` constructor, that fetches
+all the related JSON files and stores them in an ``./storage`` directory. Next
+calls to ``Ensemble('ensemble/50c0de043b5635198300033c')`` will retrieve the
+files from this local storage, so that internet connection will only be needed
+the first time an ``Ensemble`` is built.
+
+On the contrary, if you have no memory limitations and want to increase
+prediction speed, you can create the ensemble from a list of local model
+objects. Then, local model objects will only be instantiated once, and
+this could increase performance for large ensembles:
+
+.. code-block:: ruby
+
+    model_ids = ['model/50c0de043b563519830001c2',
+                 'model/50c0de043b5635198300031b')]
+    local_models = model_ids.collect{| model_id| BigML::Model.new(model_id)}
+    local_ensemble = BigML::Ensemble.new(local_models)
+
+The ``Ensemble`` object can also be instantiated using local models previously
+stored in disks or memory object caching systems. To retrieve these models
+provide a list of model ids as first argument and an extra argument
+named ``cache_get`` that should be a function receiving the model id
+to be retrieved and returning a local model object.
+
+.. code-block:: ruby
+
+    model_ids = ['model/50c0de043b563519830001c2',
+                 'model/50c0de043b5635198300031b')]
+
+    cache_get = Proc.new do|model_id|
+       # Retrieves a JSON model structure and builds a local model object
+       model_file = model_id.gsub("/", "_")
+       BigML::Model.new(JSON.parse(File.open(model_file, 'r').read))
+    end
+
+    # cache_get=cache_get
+    local_ensemble = BigML::Ensemble.new(model_ids, nil, nil, cache_get)
 
 Local Ensemble's Predictions
 ----------------------------
-Coming Soon
+
+As in the local model's case, you can use the local ensemble to create
+new predictions for your test data, and set some arguments to configure
+the final output of the ``predict`` method. By default, it will
+issue just the ensemble's final prediction. You can add the confidence to it by
+setting
+the ``with_confidence`` argument to True.
+
+.. code-block:: ruby
+
+    ensemble = BigML::Ensemble.new('ensemble/5143a51a37203f2cf7020351')
+    # with_confidence=true
+    ensemble.predict({"petal length" => 3, "petal width" => 1},
+                     true, BigML::PLURALITY_CODE, true) 
+    ['Iris-versicolor', 0.91519]
+
+And you can add more information to the predictions in a JSON format using:
+
+- ``add_confidence=true`` includes the confidence of the prediction
+- ``add_distribution=true`` includes the distribution of predictions. This is
+                            built by merging the distributions of each of the
+                            nodes predicted by every model the ensemble is
+                            composed of
+- ``add_count=true`` includes the sum of instances of the nodes predicted by
+                     every model the ensemble is composed of
+- ``add_median=true`` for regression ensembles, it computes the prediction
+                      based on the median (instead of the usual mean)
+- ``add_min=true`` adds the minimum value in the prediction's
+                    distribution (for regressions only)
+- ``add_max=true`` adds the maximum value in the prediction's
+                   distribution (for regressions only)
+
+.. code-block:: ruby
+
+    ensemble = BigML::Ensemble.new('ensemble/5143a51a37203f2cf7020351')
+
+    # add_confidence = true, add_distribution=true
+    ensemble.predict({"petal length" => 3, "petal width" => 1},
+                     true, BigML::PLURALITY_CODE, false, 
+                     true, true)
+
+    {'distribution' => [[u'Iris-versicolor', 84]],
+     'confidence' => 0.91519,
+     'prediction' => u'Iris-versicolor',
+     'distribution_unit' => 'counts'}
 
 Fields
 ------
-Coming Soon
+
+Once you have a resource, you can use the ``Fields`` class to generate a
+representation that will allow you to easily list fields, get fields ids, get a
+field id by name, column number, etc.
+
+.. code-block:: ruby
+
+    api = BigML::Api.new
+    source = api.get_source("source/5143a51a37203f2cf7000974")
+
+    fields = BigML::Fields.new(source)
+
+you can also instantiate the Fields object from the fields dict itself:
+
+.. code-block:: ruby
+
+    api = BigML::Api.new
+    source = api.get_source("source/5143a51a37203f2cf7000974")
+
+    fields = BigML::Fields.new(source['object']['fields'])
+
+The newly instantiated Fields object will give direct methods to retrieve
+different fields properties:
+
+.. code-block:: ruby
+
+    # Internal id of the 'sepal length' field
+    fields.field_id('sepal length')
+
+    # Field name of field with column number 0
+    fields.field_name(0)
+
+    # Column number of field name 'petal length'
+    fields.field_column_number('petal length')
+
+    # Statistics of values in field name 'petal length')
+    fields.stats('petal length')
+
+Depending on the resource type, Fields information will vary. ``Sources`` will
+have only the name, label, description, type of field (``optype``) while
+``dataset`` resources will have also the ``preferred`` (whether a field will is
+selectable as predictor), ``missing_count``, ``errors`` and a summary of
+the values found in each field. This is due to the fact that the ``source``
+object is built by inspecting the contents of a sample of the uploaded file,
+while the ``dataset`` resource really reads all the uploaded information. Thus,
+dataset's fields structure will always be more complete that source's.
+
+In both cases, you can extract the summarized information available using
+the ``summary_csv`` method:
+
+.. code-block:: ruby 
+
+    api = BigML::Api.new
+    dataset = api.get_dataset("dataset/5143a51a37203f2cf7300974")
+
+    fields = BigML::Fields.new(dataset)
+    fields.summary_csv("my_fields_summary.csv")
+
+In this example, the information will be stored in the
+``my_fields_summary.csv`` file. For the typical ``iris.csv`` data file, the
+summary will read:
+
+.. csv-table::
+   :header: "field column","field ID","field name","field label","field description","field type","preferred","missing count","errors","contents summary","errors summary"
+   :widths: 5, 10, 20, 5, 5, 10, 10, 5, 5, 100, 10
+
+   0,000000,sepal length,,,numeric,true,0,0,"[4.3, 7.9], mean: 5.84333",
+   1,000001,sepal width,,,numeric,false,0,0,"[2, 4.4], mean: 3.05733",
+   2,000002,petal length,,,numeric,true,0,0,"[1, 6.9], mean: 3.758",
+   3,000003,petal width,,,numeric,true,0,0,"[0.1, 2.5], mean: 1.19933",
+   4,000004,species,,,categorical,true,0,0,"3 categorìes: Iris-setosa (50), Iris-versicolor (50), Iris-virginica (50)",
+
+Another utility in the ``Fields`` object will help you update the updatable
+attributes of your source or dataset fields. For instance, if you
+need to update the type associated to one field in your dataset,
+you can change the ``field type``
+values in the previous file and use it to obtain the fields structure
+needed to update your source:
+
+.. code-block:: ruby
+
+    api = BigML::Api.new()
+    source = api.get_source("source/5143a51a37203f2cf7000974")
+
+    fields = BigML::Fields.new(source)
+    fields_update_info = fields.new_fields_structure("my_fields_summary.csv")
+    source = api.update_source(source, fields_update_info)
+
+For both sources and datasets, the updatable attributes are name, label and
+description. In ``sources`` you can also update the type of the field, and
+in ``datasets`` you can update the ``preferred`` attribute.
+
+In addition to that, you can also easily ``pair`` a list of values with fields
+ids what is very
+useful to make predictions.
+
+For example, the following snippet may be useful to create local predictions
+using a csv file as input:
+
+.. code-block:: ruby
+
+    test_reader = CSV.read("path/to/file.csv")
+    local_model = BigML::Model.new(model)
+    test_reader.each do | row|
+        input_data = fields.pair(row.collect {| val| val.to_f }, objective_field)
+        prediction = local_model.predict(input_data, false)
+    end
+
+If missing values are present, the ``Fields`` object can return a dict
+with the ids of the fields that contain missing values and its count. The
+following example:
+
+.. code-block:: ruby
+
+    api = BigML::Api.new
+    dataset = api.get_dataset("dataset/5339d42337203f233e000015")
+
+    fields = BigML::Fields.new(dataset)
+    fields.missing_counts()
+
+would output:
+
+.. code-block:: ruby
+
+    {'000003' => 1, '000000' => 1, '000001' => 1}
+
+if the there was a missing value in each of the fields whose ids are
+``000003``, ``000000``, ``000001``.
+
+You can also obtain the counts of errors per field using the ``errors_count``
+method of the api:
+
+.. code-block:: ruby
+
+    api = BigML::Api.new
+    dataset = api.get_dataset("dataset/5339d42337203f233e000015")
+    api.error_counts(dataset)
+
+The generated output is like the one in ``missing_counts``, that is, the error
+counts per field:
+
+.. code-block:: ruby
+
+    {'000000' => 1}
+
 
 Rule Generation
 ---------------
-Coming Soon
+
+You can also use a local model to generate a IF-THEN rule set that can be very
+helpful to understand how the model works internally.
+
+.. code-block:: ruby
+
+     local_model.rules()
+     IF petal_length > 2.45 AND
+         IF petal_width > 1.65 AND
+             IF petal_length > 5.05 THEN
+                 species = Iris-virginica
+             IF petal_length <= 5.05 AND
+                 IF sepal_width > 2.9 AND
+                     IF sepal_length > 5.95 AND
+                         IF petal_length > 4.95 THEN
+                             species = Iris-versicolor
+                         IF petal_length <= 4.95 THEN
+                             species = Iris-virginica
+                     IF sepal_length <= 5.95 THEN
+                         species = Iris-versicolor
+                 IF sepal_width <= 2.9 THEN
+                     species = Iris-virginica
+         IF petal_width <= 1.65 AND
+             IF petal_length > 4.95 AND
+                 IF sepal_length > 6.05 THEN
+                     species = Iris-virginica
+                 IF sepal_length <= 6.05 AND
+                     IF sepal_width > 2.45 THEN
+                         species = Iris-versicolor
+                     IF sepal_width <= 2.45 THEN
+                         species = Iris-virginica
+             IF petal_length <= 4.95 THEN
+                 species = Iris-versicolor
+     IF petal_length <= 2.45 THEN
+         species = Iris-setosa
 
 Summary generation
 ------------------
-Coming Soon
+
+You can also print the model from the point of view of the classes it predicts
+with ``local_model.summarize()``.
+It shows a header section with the training data initial distribution per class
+(instances and percentage) and the final predicted distribution per class.
+
+Then each class distribution is detailed. First a header section
+shows the percentage of the total data that belongs to the class (in the
+training set and in the predicted results) and the rules applicable to
+all the
+the instances of that class (if any). Just after that, a detail section shows
+each of the leaves in which the class members are distributed.
+They are sorted in descending
+order by the percentage of predictions of the class that fall into that leaf
+and also show the full rule chain that leads to it.
+
+::
+
+    Data distribution:
+        Iris-setosa: 33.33% (50 instances)
+        Iris-versicolor: 33.33% (50 instances)
+        Iris-virginica: 33.33% (50 instances)
+
+
+    Predicted distribution:
+        Iris-setosa: 33.33% (50 instances)
+        Iris-versicolor: 33.33% (50 instances)
+        Iris-virginica: 33.33% (50 instances)
+
+
+    Field importance:
+        1. petal length: 53.16%
+        2. petal width: 46.33%
+        3. sepal length: 0.51%
+        4. sepal width: 0.00%
+
+
+    Iris-setosa : (data 33.33% / prediction 33.33%) petal length <= 2.45
+        · 100.00%: petal length <= 2.45 [Confidence: 92.86%]
+
+
+    Iris-versicolor : (data 33.33% / prediction 33.33%) petal length > 2.45
+        · 94.00%: petal length > 2.45 and petal width <= 1.65 and petal length <= 4.95 [Confidence: 92.44%]
+        · 2.00%: petal length > 2.45 and petal width <= 1.65 and petal length > 4.95 and sepal length <= 6.05 and petal width > 1.55 [Confidence: 20.65%]
+        · 2.00%: petal length > 2.45 and petal width > 1.65 and petal length <= 5.05 and sepal width > 2.9 and sepal length > 6.4 [Confidence: 20.65%]
+        · 2.00%: petal length > 2.45 and petal width > 1.65 and petal length <= 5.05 and sepal width > 2.9 and sepal length <= 6.4 and sepal length <= 5.95 [Confidence: 20.65%]
+
+
+    Iris-virginica : (data 33.33% / prediction 33.33%) petal length > 2.45
+        · 76.00%: petal length > 2.45 and petal width > 1.65 and petal length > 5.05 [Confidence: 90.82%]
+        · 12.00%: petal length > 2.45 and petal width > 1.65 and petal length <= 5.05 and sepal width <= 2.9 [Confidence: 60.97%]
+        · 6.00%: petal length > 2.45 and petal width <= 1.65 and petal length > 4.95 and sepal length > 6.05 [Confidence: 43.85%]
+        · 4.00%: petal length > 2.45 and petal width > 1.65 and petal length <= 5.05 and sepal width > 2.9 and sepal length <= 6.4 and sepal length > 5.95 [Confidence: 34.24%]
+        · 2.00%: petal length > 2.45 and petal width <= 1.65 and petal length > 4.95 and sepal length <= 6.05 and petal width <= 1.55 [Confidence: 20.65%]
+
+
+You can also use ``local_model.get_data_distribution()`` and
+``local_model.get_prediction_distribution()`` to obtain the training and
+prediction basic distribution
+information as a list (suitable to draw histograms or any further processing).
+
+Local ensembles have a ``local_ensemble.summarize()`` method too, the output
+in this case shows only the data distribution and field importance sections.
+
+For local clusters, the ``local_cluster.summarize()`` method prints also the
+data distribution, the training data statistics per cluster and the basic
+intercentroid distance statistics
 
 Additional Information
 ----------------------
-Coming Soon
 
 For additional information about the API, see the
 `BigML developer's documentation <https://bigml.com/developers>`_.

@@ -1,5 +1,23 @@
 require "bigml/version"
 require "bigml/api"
+require "bigml/model"
+require "bigml/anomaly"
+require "bigml/anomalytree"
+require "bigml/association"
+require "bigml/associationrule"
+require "bigml/centroid"
+require "bigml/cluster"
+require "bigml/ensemble"
+require "bigml/fields"
+require "bigml/item"
+require "bigml/logistic"
+require "bigml/multimodel"
+require "bigml/multivote"
+require "bigml/path"
+require "bigml/predicate"
+require "bigml/predicates"
+require "bigml/prediction"
+require "bigml/util"
 
 module BigML
 end

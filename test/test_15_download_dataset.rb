@@ -8,6 +8,11 @@ class TestDownloadDataset < Test::Unit::TestCase
    @test_name=File.basename(__FILE__).gsub('.rb','')
    @api.delete_all_project_by_name(@test_name)
    @project = @api.create_project({'name' => @test_name})
+
+   unless File.directory?(File.dirname(__FILE__)+'/tmp/')
+     FileUtils.mkdir_p(File.dirname(__FILE__)+'/tmp/')
+   end
+
   end
 
   def teardown

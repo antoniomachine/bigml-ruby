@@ -68,6 +68,7 @@ module BigML
 
        @auth = "?username=#{username};api_key=#{api_key};"
        @dev_mode = dev_mode
+       @debug = debug
        @general_domain = nil
        @general_protocol = nil
        @prediction_domain = nil
@@ -82,7 +83,7 @@ module BigML
     
        unless storage.nil?
           if Dir.exists?(storage)
-             unless File.directory(storage)
+             unless File.directory?(storage)
                 raise ArgumentError, 'The given path is not a directory'
              end
           else
@@ -154,7 +155,7 @@ module BigML
           rescue RestClient::Exception => response
              code = response.http_code
              if [HTTP_BAD_REQUEST, HTTP_UNAUTHORIZED, HTTP_PAYMENT_REQUIRED, HTTP_FORBIDDEN, HTTP_NOT_FOUND, HTTP_TOO_MANY_REQUESTS].include?(code)
-               error = JSON.parse(response.http_body)
+               error = JSON.parse(response.http_body, :max_nesting => 500)
              else
                code = HTTP_INTERNAL_SERVER_ERROR
              end
@@ -167,11 +168,11 @@ module BigML
             code = response.code
             if [HTTP_CREATED, HTTP_OK].include?(code)
                location = response.headers.fetch('location', "")
-               resource = JSON.parse(response.to_str)
+               resource = JSON.parse(response.to_str, :max_nesting => 500)
                resource_id = resource["resource"]
                error = nil
             elsif [HTTP_BAD_REQUEST, HTTP_UNAUTHORIZED, HTTP_PAYMENT_REQUIRED, HTTP_FORBIDDEN, HTTP_NOT_FOUND, HTTP_TOO_MANY_REQUESTS].include?(code)
-               error = JSON.parse(response.to_str)
+               error = JSON.parse(response.to_str, :max_nesting => 500)
             else
                code = HTTP_INTERNAL_SERVER_ERROR
             end
@@ -202,9 +203,10 @@ module BigML
         resource = nil 
         error = {"status" => {"code" => HTTP_INTERNAL_SERVER_ERROR,
                 "message" => "The resource couldn't be retrieved"}}
-        auth = shared_username.nil? ? @auth : "?username=#{@shared_username};api_key=#{@shared_api_key}"
+        auth = shared_username.nil? ? @auth : "?username=#{shared_username};api_key=#{shared_api_key}"
 
         query_string = query_string.nil? ? '' : query_string
+
         begin
            response = RestClient.get url+auth+query_string, :accept => "application/json;charset=utf-8"
         rescue RestClient::RequestTimeout
@@ -218,14 +220,16 @@ module BigML
         begin
            code = response.code
            if code == HTTP_OK
-             resource = JSON.parse(response.to_str)
+             resource = JSON.parse(response.to_str, :max_nesting => 500)
              resource_id = resource['resource']
              error = nil
            elsif [HTTP_BAD_REQUEST, HTTP_UNAUTHORIZED, HTTP_NOT_FOUND, HTTP_TOO_MANY_REQUESTS].include?(code)
-              error = JSON.parse(response.to_str)
+              error = JSON.parse(response.to_str, :max_nesting => 500)
            else
               code=HTTP_INTERNAL_SERVER_ERROR
            end
+        rescue JSON::NestingError => e
+           raise "max nesting json is 500" 
         rescue StandardError => e
           code=HTTP_INTERNAL_SERVER_ERROR
         end
@@ -266,19 +270,19 @@ module BigML
          raise 'Request Timeout'
        rescue RestClient::Exception => e
          code = HTTP_INTERNAL_SERVER_ERROR
-         return maybe_save(resource_id, @storage, code,
+         return BigML::Util::maybe_save(resource_id, @storage, code,
                            location, resource, error)
        end
       
        begin
            code = response.code
            if code == HTTP_OK
-             resource = JSON.parse(response.to_str)
+             resource = JSON.parse(response.to_str, :max_nesting => 500)
              meta = resource['meta']
              resources = resource['objects']
              error = nil
            elsif [HTTP_BAD_REQUEST, HTTP_UNAUTHORIZED, HTTP_NOT_FOUND, HTTP_TOO_MANY_REQUESTS].include?(code)
-              error = JSON.parse(response.to_str)
+              error = JSON.parse(response.to_str, :max_nesting => 500)
            else
               code=HTTP_INTERNAL_SERVER_ERROR
            end
@@ -315,18 +319,18 @@ module BigML
          raise 'Request Timeout'
        rescue RestClient::Exception => e
          code = HTTP_INTERNAL_SERVER_ERROR
-         return maybe_save(resource_id, @storage, code,
-                           location, resource, error)
+         return BigML::Util::maybe_save(resource_id, @storage, code,
+                                        location, resource, error)
        end
 
        begin
            code = response.code
            if code == HTTP_ACCEPTED
-             resource = JSON.parse(response.to_str)
+             resource = JSON.parse(response.to_str, :max_nesting => 500)
              resource_id = resource['resource']
              error = nil
            elsif [HTTP_UNAUTHORIZED, HTTP_PAYMENT_REQUIRED, HTTP_METHOD_NOT_ALLOWED, HTTP_TOO_MANY_REQUESTS].include?(code)
-             error = JSON.parse(response.to_str)
+             error = JSON.parse(response.to_str, :max_nesting => 500)
            else
              code=HTTP_INTERNAL_SERVER_ERROR 
            end
@@ -354,8 +358,8 @@ module BigML
          raise 'Request Timeout'
        rescue RestClient::Exception => e
          code = HTTP_INTERNAL_SERVER_ERROR
-         return maybe_save(resource_id, @storage, code,
-                           location, resource, error)
+         return BigML::Util::maybe_save(resource_id, @storage, code,
+                             location, resource, error)
        end
 
        begin
@@ -363,7 +367,7 @@ module BigML
            if code == HTTP_NO_CONTENT
              error = nil
            elsif [HTTP_BAD_REQUEST, HTTP_UNAUTHORIZED, HTTP_NOT_FOUND, HTTP_TOO_MANY_REQUESTS].include?(code)
-              error = JSON.parse(response.to_str)
+              error = JSON.parse(response.to_str, :max_nesting => 500)
            else
               code=HTTP_INTERNAL_SERVER_ERROR
            end
@@ -404,7 +408,7 @@ module BigML
              if response["content_type"] == CONTENT_TYPE
                 begin
                    if counter < retries 
-                      download_status = JSON.parse(file_object)
+                      download_status = JSON.parse(file_object, :max_nesting => 500)
                       if !download_status.nil? and download_status.is_a?(Hash)
                          if download_status['status']['code'] != 5
                             sleep(BigML::Util::get_exponential_wait(wait_time, counter))
@@ -437,7 +441,6 @@ module BigML
           elsif [HTTP_BAD_REQUEST,  HTTP_UNAUTHORIZED, HTTP_NOT_FOUND,HTTP_TOO_MANY_REQUESTS].include?(code)
              error = file_object
           else
-	     puts "INTERNAL PUS"
              code = HTTP_INTERNAL_SERVER_ERROR
           end
 
@@ -478,16 +481,14 @@ module BigML
             if @general_domain != BigML::Domain::DEFAULT_DOMAIN
                alternate_message = "- The "+resource_type +" was not created in "+ @general_domain +".\n" 
             end
- 
-            error += "\nCouldn\'t find a "+resource_type +" matching the given"
-            error += " id. The most probable causes are:\n\n"+alternate_message
-            error += "- A typo in the "+resource_type+"\'s id.\n'"
-            error += "- The "+resource_type+" id cannot be accessed with your credentials.\n"
-            error += "- The resource was created in a mode (development or production) that is not the one set in the"
-            error += " BigML connection object by the corresponding flag.\n"
-            error += "\nDouble-check your "+resource_type+" and"
-            error += " credentials info and retry."
-
+          
+            error += "\nCouldn\'t find a %s matching the given id in %a. The most probable 
+                      causes are:\n\n%s' - A typo in the %s\'s id.\n - The %s id cannot be accessed 
+                      with your credentials or was not created in %s.\n - The resource was created 
+                      in a mode (development or  production) that is not the one set in the  BigML 
+                      connection object by the corresponding flag.\n \nDouble-check your %s and  
+                      credentials info and retry." % [resource_type, @general_domain, alternate_message, 
+                                          resource_type, resource_type, @general_domain, resource_type] 
             return error
           end
  

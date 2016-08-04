@@ -18,7 +18,7 @@ Field importance:
 
 Rules summary:
 
-Iris-setosa : (data 33.33% / prediction 33.33%) petal length <= 2.45 [Confidence: 92.86%]
+Iris-setosa : (data 33.33% / prediction 33.33%) petal length <= 2.45 [Confidence: 92.87%]
 
 
 Iris-versicolor : (data 33.33% / prediction 33.33%) petal length > 2.45
