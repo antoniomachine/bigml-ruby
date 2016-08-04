@@ -493,8 +493,10 @@ module BigML
           end
  
           if code == HTTP_UNAUTHORIZED
-             error +='\nDouble-check your credentials, please.'
-             return error   
+             error +='\nDouble-check your credentials, and the general'
+	     error +=' domain your account is registered with (currently'
+	     error +=' using %s), please.' % @general_domain
+             return error  
           end
   
           if code == HTTP_BAD_REQUEST
