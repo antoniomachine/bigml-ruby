@@ -15,7 +15,7 @@ class TestComparePrediction < Test::Unit::TestCase
   end   
         
   def teardown
-   #@api.delete_all_project_by_name(@test_name)
+   @api.delete_all_project_by_name(@test_name)
   end
 
   # Scenario: Successfully creating a prediction:
@@ -883,6 +883,110 @@ class TestComparePrediction < Test::Unit::TestCase
 
      end
   end
+  #
+  # Scenario: Successfully comparing predictions for logistic regression with balance_fields:
+  # 
+  def test_scenario14
+     data = [['data/movies.csv', {"fields"=> {"000000"=> {"name"=> "user_id", "optype"=> "numeric"},
+                                                   "000001"=> {"name"=> "gender", "optype"=> "categorical"},
+                                                   "000002"=> {"name"=> "age_range", "optype"=> "categorical"},
+                                                   "000003"=> {"name"=> "occupation", "optype"=> "categorical"},
+                                                   "000004" => {"name" => "zipcode", "optype"=> "numeric"},
+                                                   "000005"=> {"name"=> "movie_id", "optype"=> "numeric"},
+                                                   "000006"=> {"name"=> "title", "optype"=> "text"},
+                                                   "000007"=> {"name"=> "genres", "optype"=> "items",
+                                                   "item_analysis" => {"separator"=> "$"}},
+                                                   "000008"=> {"name"=> "timestamp", "optype"=> "numeric"},
+                                                   "000009"=> {"name"=> "rating", "optype"=> "categorical"}},
+                                                   "source_parser"=> {"separator" => ";"}}, {"timestamp" => 999999999}, "5", 0.3231, "000009", {"balance_fields" => true}],
+            ['data/movies.csv', {"fields" => {"000000"=> {"name"=> "user_id", "optype"=> "numeric"},
+                                                   "000001"=> {"name"=> "gender", "optype"=> "categorical"},
+                                                   "000002"=> {"name"=> "age_range", "optype"=> "categorical"},
+                                                   "000003"=> {"name"=> "occupation", "optype"=> "categorical"},
+                                                   "000004"=> {"name"=> "zipcode", "optype"=> "numeric"},
+                                                   "000005"=> {"name"=> "movie_id", "optype"=> "numeric"},
+                                                   "000006"=> {"name"=> "title", "optype"=> "text"},
+                                                   "000007"=> {"name"=> "genres", "optype"=> "items",
+                                                  "item_analysis"=> {"separator"=> "$"}},
+                                                  "000008"=> {"name"=> "timestamp", "optype"=> "numeric"},
+                                                  "000009"=> {"name"=> "rating", "optype"=> "categorical"}},
+                                                 "source_parser"=> {"separator"=> ";"}}, {"timestamp"=> 999999999}, "4", 0.3147, "000009", {"normalize"=> true}],
+            ['data/movies.csv', {"fields"=> {"000000"=> {"name"=> "user_id", "optype"=> "numeric"},
+                                                   "000001"=> {"name"=> "gender", "optype"=> "categorical"},
+                                                   "000002"=> {"name"=> "age_range", "optype"=> "categorical"},
+                                                   "000003"=> {"name"=> "occupation", "optype"=> "categorical"},
+                                                   "000004"=> {"name"=> "zipcode", "optype"=> "numeric"},
+                                                   "000005"=> {"name"=> "movie_id", "optype"=> "numeric"},
+                                                   "000006"=> {"name"=> "title", "optype"=> "text"},
+                                                   "000007"=> {"name"=> "genres", "optype"=> "items",
+                                                   "item_analysis"=> {"separator"=> "$"}},
+                                                   "000008"=> {"name"=> "timestamp", "optype"=> "numeric"},
+                                                   "000009"=> {"name"=> "rating", "optype"=> "categorical"}},
+                                                   "source_parser"=> {"separator"=> ";"}}, {"timestamp"=> 999999999}, "4", 0.2282, "000009", {"balance_fields"=> true, "normalize"=> true}] 
+            ]
 
+     puts
+     puts "Scenario: Successfully comparing predictions for logistic regression with balance_fields"
+
+     data.each do |filename, options, data_input, prediction_result, probability, objective, parms|
+        puts
+        puts "Given I create a data source uploading a <%s> file" % filename
+
+        source = @api.create_source(File.dirname(__FILE__)+"/"+filename, {'name'=> 'source_test', 'project'=> @project["resource"]})
+
+        puts "And I wait until the source is ready"
+        assert_equal(BigML::HTTP_CREATED, source["code"])
+        assert_equal(1, source["object"]["status"]["code"])
+        assert_equal(@api.ok(source), true)
+
+        puts "And I update the source with params <%s>" % JSON.generate(options)
+        source = @api.update_source(source, options)
+        assert_equal(BigML::HTTP_ACCEPTED, source["code"])
+        assert_equal(@api.ok(source), true)
+
+        puts "And I create a dataset"
+        dataset=@api.create_dataset(source)
+
+        puts "And I wait until the dataset is ready"
+        assert_equal(BigML::HTTP_CREATED, dataset["code"])
+        assert_equal(1, dataset["object"]["status"]["code"])
+        assert_equal(@api.ok(dataset), true)
+
+        puts "And I create a logistic regression model with objective <%s> and flags <%s> " % [objective,parms]
+        logistic_regression = @api.create_logisticregression(dataset, parms.merge({"objective_field" => objective}))
+        puts "And I wait until the logistic regression model is ready"
+
+        assert_equal(BigML::HTTP_CREATED, logistic_regression["code"])
+        assert_equal(@api.ok(logistic_regression), true)
+
+        puts "And I create a local logistic regression model"
+        localLogisticRegression = BigML::Logistic.new(logistic_regression)
+
+        puts "When I create a logistic regression prediction for <%s>" % JSON.generate(data_input)
+        prediction = @api.create_prediction(logistic_regression, data_input)
+        assert_equal(BigML::HTTP_CREATED, prediction["code"])
+
+        puts "Then the logistic regression prediction is <%s>" % prediction_result
+        assert_equal(prediction_result.to_s, prediction["object"]["output"].to_s)
+
+        puts "And the logistic regression probability for the prediction is <%s>" % probability
+        prediction["object"]["probabilities"].each do |prediction_value, remote_probability|
+           if prediction_value == prediction["object"]["output"]
+              assert_equal(remote_probability.to_f.round(2),probability.round(2))
+              break
+           end
+        end
+
+        puts "And I create a local logistic regression prediction for <%s>" % JSON.generate(data_input)
+        local_prediction = localLogisticRegression.predict(data_input)
+
+        puts "Then the local logistic regression prediction is <%s>" % prediction
+        assert_equal(prediction_result, local_prediction["prediction"])
+
+        puts "And the local logistic regression probability for the prediction is <%s>" % probability
+        assert_equal(probability.round(4), local_prediction["probability"].round(4))
+
+     end
+  end
 end
 
