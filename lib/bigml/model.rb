@@ -147,7 +147,73 @@ module BigML
         return @tree.get_leaves(nil, filter_function)
      end
 
-     def predict(input_data, by_name=true,
+     def predict(input_data, options={})
+        # Makes a prediction based on a number of field values.
+
+        # By default the input fields must be keyed by field name but you can use
+        # `by_name` to input them directly keyed by id.
+
+        # input_data: Input data to be predicted
+        # by_name: Boolean, true if input_data is keyed by names
+        # print_path: Boolean, if true the rules that lead to the prediction
+        #             are printed
+        # out: output handler
+        # with_confidence: Boolean, if true, all the information in the node
+        #                 (prediction, confidence, distribution and count)
+        #                 is returned in a list format
+        # missing_strategy: LAST_PREDICTION|PROPORTIONAL missing strategy for
+        #                  missing fields
+        # add_confidence: Boolean, if true adds confidence to the dict output
+        # add_path: Boolean, if true adds path to the dict output
+        # add_distribution: Boolean, if true adds distribution info to the
+        #                  dict output
+        # add_count: Boolean, if true adds the number of instances in the
+        #               node to the dict output
+        # add_median: Boolean, if true adds the median of the values in
+        #            the distribution
+        # add_next: Boolean, if true adds the field that determines next
+        #           split in the tree
+        # add_min: Boolean, if true adds the minimum value in the prediction's
+        #          distribution (for regressions only)
+        # add_max: Boolean, if true adds the maximum value in the prediction's
+        #         distribution (for regressions only)
+        # add_unused_fields: Boolean, if True adds the information about the
+        #           fields in the input_data that are not being used
+        #           in the model as predictors.
+        # multiple: For categorical fields, it will return the categories
+        #         in the distribution of the predicted node as a
+        #           list of dicts:
+        #            [{'prediction' => 'Iris-setosa',
+        #              'confidence' => 0.9154
+        #              'probability' => 0.97
+        #              'count' => 97},
+        #             {'prediction' => 'Iris-virginica',
+        #              'confidence' => 0.0103
+        #              'probability' => 0.03,
+        #              'count' => 3}]
+        #          The value of this argument can either be an integer
+        #          (maximum number of categories to be returned), or the
+        #          literal 'all', that will cause the entire distribution
+        #          in the node to be returned.
+        return _predict(input_data,
+	               options.key?("by_name") ? options["by_name"] : true,
+                       options.key?("print_path") ? options["print_path"] : false,
+		       options.key?("out") ? options["out"] : $STDOUT,
+		       options.key?("with_confidence") ? options["with_confidence"] : false,
+		       options.key?("missing_strategy") ? options["missing_strategy"] : LAST_PREDICTION,
+		       options.key?("add_confidence") ? options["add_confidence"] : false,
+		       options.key?("add_path") ? options["add_path"] : false,
+		       options.key?("add_distribution") ? options["add_distribution"] : false,
+		       options.key?("add_count") ? options["add_count"] : false,
+		       options.key?("add_median") ? options["add_median"] : false,
+                       options.key?("add_next") ? options["add_next"] : false,
+		       options.key?("add_min") ? options["add_min"] : false,
+		       options.key?("add_max") ? options["add_max"] : false,
+                       options.key?("add_unused_fields") ? options["add_unused_fields"] : false,
+		       options.key?("multiple") ? options["multiple"] :nil) 
+     end
+
+     def _predict(input_data, by_name=true,
                 print_path=false, out=$STDOUT, with_confidence=false,
                 missing_strategy=LAST_PREDICTION,
                 add_confidence=false,
@@ -158,6 +224,7 @@ module BigML
                 add_next=false,
                 add_min=false,
                 add_max=false,
+                add_unused_fields=false,
                 multiple=nil)
 
         # Makes a prediction based on a number of field values.
@@ -189,6 +256,9 @@ module BigML
         #          distribution (for regressions only)
         # add_max: Boolean, if true adds the maximum value in the prediction's
         #         distribution (for regressions only)
+        # add_unused_fields: Boolean, if True adds the information about the
+        #           fields in the input_data that are not being used
+        #           in the model as predictors.
         # multiple: For categorical fields, it will return the categories
         #         in the distribution of the predicted node as a
         #           list of dicts:
@@ -216,7 +286,14 @@ module BigML
         end
 
         # Checks and cleans input_data leaving the fields used in the model
-        input_data = filter_input_data(input_data, by_name)
+        new_data = filter_input_data(input_data, by_name, add_unused_fields)
+
+        if add_unused_fields
+          input_data, unused_fields = new_data
+        else
+          input_data = new_data
+        end
+
         # Strips affixes for numeric values and casts to the final field type
         BigML::Util::cast(input_data, @fields)
         prediction = @tree.predict(input_data, nil,
@@ -255,7 +332,7 @@ module BigML
            end
         else
            if (add_confidence or add_path or add_distribution or add_count or
-                    add_median or add_next or add_min or add_max)
+                    add_median or add_next or add_min or add_max or add_unused_fields)
                output = {'prediction' => prediction.output}
 
                if add_confidence
@@ -293,6 +370,10 @@ module BigML
 
                if @tree.regression and add_max
                  output['max'] = prediction.max
+               end
+
+               if add_unused_fields
+                  output['unused_fields'] = unused_fields
                end
            end
         end

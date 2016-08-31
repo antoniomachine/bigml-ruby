@@ -200,6 +200,11 @@ module BigML
     return get_resource( BigML::ASSOCIATION_SET_PATH, association_set)
   end
 
+  def self.get_lda_id(lda)
+    #Returns an lda/id
+    return get_resource(BigML::LDA_PATH, lda)
+  end
+
   def self.get_script_id(script)
     #Returns a script/id.
     return get_resource( BigML::SCRIPT_PATH, script)

@@ -84,8 +84,14 @@ module BigML
         return (!value.nil? and  @missing_tokens.include?(value)) ?  nil : value 
      end
 
-     def filter_input_data(input_data, by_name=true)
+     def filter_input_data(input_data, by_name=true, add_unused_fields=false)
         #Filters the keys given in input_data checking against model fields
+        #  If `add_unused_fields` is set to True, it also
+        #  provides information about the ones that are not used.
+
+        unused_fields = []
+        new_input = {}
+
         if input_data.is_a?(Hash)
           #  remove all missing values
           input_data.each do |key, value|
@@ -99,28 +105,32 @@ module BigML
             # We no longer check that the input data keys match some of
             # the dataset fields. We only remove the keys that are not
             # used as predictors in the model
-            new_input_data={}
             input_data.each do |key, value|
                if @inverted_fields.key?(key) and 
                   (@objective_id.nil? or @inverted_fields[key] != @objective_id) 
-                    new_input_data[@inverted_fields[key]] = value
+                    new_input[@inverted_fields[key]] = value
+               else
+                  unused_fields << key
                end
             end
-            input_data = new_input_data
+            input_data = new_input
 
           else
-            new_input_data={}
             input_data.each do |key, value|
                if (@fields.include?(key) and (@objective_id.nil? or key !=  @objective_id) )
-                  new_input_data[key] = value
+                  new_input[key] = value
+               else
+                  unused_fields << key
                end
             end
-            input_data = new_input_data
           end
-          return input_data
+
+          result = add_unused_fields ? [new_input, unused_fields] : new_input
+          return result
+
         else
           puts "Failed to read input data in the expected  {field:value} format."
-          return {}
+          return add_unused_fields ? [{}, []] : {}
         end
 
      end

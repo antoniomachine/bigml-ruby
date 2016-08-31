@@ -63,7 +63,7 @@ module BigML
          @script_url = @url + SCRIPT_PATH
          @library_url = @url + LIBRARY_PATH
          @execution_url = @url + EXECUTION_PATH
-
+         @lda_url = @url + LDA_PATH
      end
 
      def get_fields(resource)
@@ -1940,6 +1940,74 @@ module BigML
               delete_project(project["resource"])
            end 
         end
+     end
+
+     ##########################################################################
+     #
+     #  LDAs REST calls 
+     #  https://bigml.com/developers/ldas
+     ##########################################################################
+     def create_lda(datasets, args=nil, wait_time=3, retries=10)
+       # Creates an LDA from a `dataset` or a list o `datasets`
+
+       create_args=_set_create_from_datasets_args(datasets,
+                                                  args,
+                                                  wait_time,
+                                                  retries)
+       return _create(@lda_url, JSON.generate(create_args))
+
+     end
+
+     def get_lda(lda, query_string='', shared_username=nil, shared_api_key=nil)
+        # Retrieves an LDA.
+
+        # The lda parameter should be a string containing the
+        # LDA id or the dict returned by create_lda.
+        # As LDA is an evolving object that is processed
+        # until it reaches the FINISHED or FAULTY state, the function will
+        # return a dict that encloses the LDA values and state info
+        # available at the time it is called.
+
+        # If this is a shared LDA, the username and sharing api key must
+        # also be provided.
+ 
+        BigML::check_resource_type(lda, LDA_PATH, "An LDA id is needed.")
+        lda_id = BigML::get_lda_id(lda)
+        unless lda_id.nil?
+          return _get(@url+lda_id, query_string, shared_username, shared_api_key)
+        end
+     end
+
+     def lda_is_ready(lda, args={})
+       #Check whether an LDA's  status is FINISHED.
+       BigML::check_resource_type(lda, LDA_PATH, "An LDA id is needed.")
+       lda = get_lda(lda, args.fetch("query_string", nil),
+                         args.fetch("shared_username", nil),
+                         args.fetch("shared_api_key", nil))
+       return resource_is_ready(lda)
+     end
+
+     def list_ldas(query_string='')
+       # Lists all your ldas
+       return _list(@lda_url, query_string)
+     end
+
+     def update_lda(lda, changes)
+       # Updates a LDA.
+       BigML::check_resource_type(lda, LDA_PATH, "An LDA id is needed.")
+       project_id = BigML::get_lda_id(lda)
+       unless lda_id.nil?
+          return _update(@url+lda_id, JSON.generate(changes))
+       end
+     end
+
+     def delete_lda(lda)
+       #Deletes a LDA.
+       BigML::check_resource_type(lda, LDA_PATH, "An LDA id is needed.")
+       lda_id = BigML::get_lda_id(lda)
+       unless lda_id.nil?
+          return _delete(@url+lda_id)
+       end
      end
  
   end

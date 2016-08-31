@@ -3394,8 +3394,7 @@ a dictionary with the prediction, confidence and rules:
 
     # add_confidence=true add_path=true
     local_model.predict({"petal length" => 3, "petal width" => 1},
-                        true, false, $STDOUT, false, BigML::LAST_PREDICTION,
-                        true, true)
+                        {"add_confidence" => true, "add_path" => true})
  
 that will return:
 
@@ -3425,10 +3424,7 @@ the list of categories with their associated information.
 
 .. code-block:: ruby
     # multiple = 'all'
-    local_model.predict({"petal length": 3}, true, false, $STDOUT,
-                         false, BigML::LAST_PREDICTION, false, false,
-                         false, false, false, false, false, false, 
-                         'all')
+    local_model.predict({"petal length": 3}, {"options" => "all"})
 
 will result in
 
@@ -3475,8 +3471,7 @@ argument with code ``0`` to use ``last prediction`` and ``1`` for
 
     # LAST_PREDICTION = 0; PROPORTIONAL = 1
     local_model.predict({"petal length": 3, "petal width": 1},
-                        true, false, $STDOUT, false,
-                        BigML::PROPORTIONAL)
+                        {"missing_strategy" => BigML::PROPORTIONAL})
 
 Local Clusters
 --------------
@@ -3842,14 +3837,14 @@ weighted``:
 .. code-block:: ruby
 
     # method=1
-    model.predict({"petal length" => 3, "petal width" => 1}, true, 1)
+    model.predict({"petal length" => 3, "petal width" => 1}, {'method' => 1})
 
 that will weight each vote using the confidence/error given by the model
 to each prediction, or even ``probability weighted``:
 
 .. code-block:: ruby
     # method = 2
-    model.predict({"petal length" => 3, "petal width" => 1}, true, 2)
+    model.predict({"petal length" => 3, "petal width" => 1}, {'method' => 2})
 
 that weights each vote by using the probability associated to the training
 distribution at the prediction node.
@@ -3864,8 +3859,9 @@ An example of ``threshold`` combination method would be:
 .. code-block:: ruby
 
     # method = 3, options = {'threshold' => 3, 'category' => 'Iris-virginica'}
-    model.predict({'petal length' => 0.9, 'petal width' => 3.0}, true, 3,
-                   false, {'threshold' => 3, 'category' => 'Iris-virginica'})
+    model.predict({'petal length' => 0.9, 'petal width' => 3.0},
+                  {'method' => 3, 
+                   'options' => {'threshold' => 3, 'category' => 'Iris-virginica'}})
 
 
 When making predictions on a test set with a large number of models,
@@ -3976,7 +3972,7 @@ instance:
     # Ensemble object to predict
     ensemble = BigML::Ensemble.new(ensemble, api)
     # predict with method = 1
-    ensemble.predict({"petal length" => 3, "petal width" => 1}, true, 1)
+    ensemble.predict({"petal length" => 3, "petal width" => 1}, {'method' => 1})
 
 creates a new ensemble and stores its information in ``./my_storage``
 folder. Then this information is used to predict locally using the
@@ -4063,8 +4059,9 @@ the ``with_confidence`` argument to True.
 
     ensemble = BigML::Ensemble.new('ensemble/5143a51a37203f2cf7020351')
     # with_confidence=true
-    ensemble.predict({"petal length" => 3, "petal width" => 1},
-                     true, BigML::PLURALITY_CODE, true) 
+    ensemble.predict({"petal length" => 3, "petal width" => 1}, 
+                     {'with_confidence' => true})
+
     ['Iris-versicolor', 0.91519]
 
 And you can add more information to the predictions in a JSON format using:
@@ -4089,8 +4086,8 @@ And you can add more information to the predictions in a JSON format using:
 
     # add_confidence = true, add_distribution=true
     ensemble.predict({"petal length" => 3, "petal width" => 1},
-                     true, BigML::PLURALITY_CODE, false, 
-                     true, true)
+                     {"add_confidence" => true,
+                      "add_distribution" => true})
 
     {'distribution' => [[u'Iris-versicolor', 84]],
      'confidence' => 0.91519,
@@ -4204,7 +4201,7 @@ using a csv file as input:
     local_model = BigML::Model.new(model)
     test_reader.each do | row|
         input_data = fields.pair(row.collect {| val| val.to_f }, objective_field)
-        prediction = local_model.predict(input_data, false)
+        prediction = local_model.predict(input_data, {'by_name' => false})
     end
 
 If missing values are present, the ``Fields`` object can return a dict

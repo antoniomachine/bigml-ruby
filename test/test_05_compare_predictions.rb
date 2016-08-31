@@ -255,7 +255,9 @@ class TestComparePrediction < Test::Unit::TestCase
         assert_equal(item["prediction"], prediction["object"]["prediction"][item["objective"]])
 
         puts "And I create a proportional missing strategy local prediction for <%s>" % JSON.generate(item["data_input"])
-        local_prediction = local_model.predict(item["data_input"], true, false, $STDOUT, true, BigML::PROPORTIONAL)
+
+        local_prediction = local_model.predict(item["data_input"], {'with_confidence' => true, 
+                                                                    'missing_strategy' => BigML::PROPORTIONAL}) 
 
         puts "Then the local prediction is <%s>" % item["prediction"]
         if item["prediction"].is_a?(Numeric)
@@ -280,7 +282,7 @@ class TestComparePrediction < Test::Unit::TestCase
            ['data/spam.csv', {"fields"=> {"000001"=> {"optype"=> "text", "term_analysis"=> {"token_mode"=> "full_terms_only", "language"=> "en"}}}}, {"Type"=> "ham", "Message"=> "FREE for 1st week! No1 Nokia tone 4 ur mob every week just txt NOKIA to 87077 Get txting and tell ur mates. zed POBox 36504 W45WQ norm150p/tone 16+"}, 'Cluster 0', 0.5],
            ['data/spam.csv', {"fields"=> {"000001"=> {"optype"=> "text", "term_analysis"=> {"token_mode"=> "full_terms_only", "language"=> "en"}}}}, {"Type"=> "ham", "Message"=> "Ok"}, 'Cluster 0', 0.478833312167],
            ['data/spam.csv', {"fields"=> {"000001"=> {"optype"=> "text", "term_analysis"=> {"case_sensitive"=> true, "stem_words"=> true, "use_stopwords"=> false, "language"=> "en"}}}}, {"Type"=> "", "Message"=> ""}, 'Cluster 0', 0.707106781187],
-           ['data/diabetes.csv', {"fields"=> {}}, {"pregnancies"=> 0, "plasma glucose"=> 118, "blood pressure"=> 84, "triceps skin thickness"=> 47, "insulin"=> 230, "bmi"=> 45.8, "diabetes pedigree"=> 0.551, "age"=> 31, "diabetes"=> "true"}, 'Cluster 3', 0.5033378686559257],
+           ['data/diabetes.csv', {"fields"=> {}}, {"pregnancies"=> 0, "plasma glucose"=> 118, "blood pressure"=> 84, "triceps skin thickness"=> 47, "insulin"=> 230, "bmi"=> 45.8, "diabetes pedigree"=> 0.551, "age"=> 31, "diabetes"=> true}, 'Cluster 3', 0.5033378686559257],
            ['data/iris_sp_chars.csv', {"fields"=> {}}, {"pétal.length"=>1, "pétal&width\u0000"=> 2, "sépal.length"=>1, "sépal&width"=> 2, "spécies"=> "Iris-setosa"}, 'Cluster 7', 0.8752380218327035],
            ['data/movies.csv', {"fields"=> {"000007"=> {"optype"=> "items", "item_analysis"=> {"separator"=> "$"}}}}, {"gender"=> "Female", "age_range"=> "18-24", "genres"=> "Adventure$Action", "timestamp"=> 993906291, "occupation"=> "K-12 student", "zipcode"=> 59583, "rating"=> 3}, 'Cluster 1', 0.7294650227133437]
            ]
@@ -439,7 +441,9 @@ class TestComparePrediction < Test::Unit::TestCase
         assert_equal(confidence.round(4), prediction["object"]["confidence"].round(4))
 
         puts "And I create a proportional missing strategy local prediction for <%s>" % JSON.generate(data_input)
-        local_prediction = local_model.predict(data_input, true, false, $STDOUT, true, 1)
+
+        local_prediction = local_model.predict(data_input, {'with_confidence' => true, 
+                                              'missing_strategy' => BigML::PROPORTIONAL})
 
         puts "Then the local prediction is <%s>" % prediction_value
 
@@ -743,7 +747,9 @@ class TestComparePrediction < Test::Unit::TestCase
         assert_equal(prediction_result, prediction["object"]["prediction"][objective])
 
         puts "And I create a proportional missing strategy local prediction for <%s>" % JSON.generate(data_input)
-        local_prediction = local_model.predict(data_input, true, false, $STDOUT, true, 1)
+
+        local_prediction = local_model.predict(data_input, {'with_confidence' => true,
+                                                            'missing_strategy' => BigML::PROPORTIONAL})
 
         puts "Then the local prediction is <%s>" % prediction_result
         assert_equal(prediction_result, local_prediction[0])
@@ -869,7 +875,9 @@ class TestComparePrediction < Test::Unit::TestCase
         assert_equal(confidence.round(4), prediction["object"]["confidence"].round(4))
 
         puts "And I create a proportional missing strategy local prediction for <%s>" % JSON.generate(data_input)
-        local_prediction = local_model.predict(data_input, true, false, $STDOUT, true, BigML::PROPORTIONAL)
+
+        local_prediction = local_model.predict(data_input, {'with_confidence' => true,
+                                                            'missing_strategy' => BigML::PROPORTIONAL})
 
         puts "Then the local prediction is <%s>" % prediction_result
 

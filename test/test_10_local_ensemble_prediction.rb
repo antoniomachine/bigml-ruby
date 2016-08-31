@@ -54,7 +54,8 @@ class TestEnsemblePrediction < Test::Unit::TestCase
        puts "And I create a local Ensemble"
        local_ensemble = BigML::Ensemble.new(ensemble, @api)
        puts "When I create a local ensemble prediction with confidence for <%s>" % data_input
-       prediction = local_ensemble.predict(data_input, true, BigML::PLURALITY_CODE, true)
+
+       prediction = local_ensemble.predict(data_input, {'with_confidence' => true}) 
 
        puts "Then the local prediction is <%s>" % prediction_result
        assert_equal(prediction_result, prediction[0])
@@ -169,7 +170,8 @@ class TestEnsemblePrediction < Test::Unit::TestCase
        local_ensemble = BigML::Ensemble.new(ensemble, @api)
 
        puts "When I create a local ensemble prediction for <%s> in JSON adding confidence" % JSON.generate(data_input)
-       prediction = local_ensemble.predict(data_input, true, BigML::PLURALITY_CODE, false, true)
+
+       prediction = local_ensemble.predict(data_input, {'add_confidence' => true})
 
        puts "Then the local prediction is <%s>" % prediction_result
        assert_equal(prediction_result, prediction['prediction'])
@@ -277,8 +279,7 @@ class TestEnsemblePrediction < Test::Unit::TestCase
        local_ensemble = BigML::Ensemble.new(ensemble, @api)
 
        puts "When I create a local ensemble prediction using median with confidence for <%s>" % data_input
-       prediction = local_ensemble.predict(data_input, true, BigML::PLURALITY_CODE, true, 
-                                           false, false, false, false, false, false, nil, BigML::LAST_PREDICTION, true)
+       prediction = local_ensemble.predict(data_input, {'with_confidence' => true, 'median' => true}) 
 
        puts "Then the local prediction is <%s>" % prediction_result
        assert_equal(prediction_result, prediction[0].round(4))

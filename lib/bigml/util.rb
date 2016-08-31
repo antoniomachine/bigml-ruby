@@ -1,5 +1,6 @@
 require 'json'
 require 'active_support'
+require 'parsr'
 
 module BigML
   class Util 
@@ -121,7 +122,31 @@ module BigML
        # Checks expected type in input data values, strips affixes and casts
        #
        input_data.each do |key,value|
-          if  ((fields[key]['optype'] == 'numeric' and
+
+          if (!!value == value and fields[key]['optype'] == 'categorical' and
+               fields[key]['summary']['categories'].size == 2)
+ 
+             begin
+               booleans = {}
+               categories = [] 
+               fields[key]['summary']['categories'].each do |category, _|
+                 categories << category
+               end
+               # checking which string represents the boolean
+               categories.each do |category|
+                 bool_key = Parsr.literal_eval(category) ? 'true' : 'false'
+                 booleans[bool_key] = category
+               end
+               # converting boolean to the corresponding string
+               input_data[key] = booleans[str(value)]
+
+             rescue Exception
+                raise ArgumentError "Mismatch input data type in 
+                                     field \"%s\" for value %s. 
+                                     String expected" % [fields[key]['name'], value]
+             end
+
+          elsif  ((fields[key]['optype'] == 'numeric' and
               value.is_a?(String)) or (fields[key]['optype'] != 'numeric') and 
               !value.is_a?(String))
               begin
@@ -136,7 +161,9 @@ module BigML
                  raise ArgumentError "Mismatch input data type in 
                                         field %s for value %s. " % [fields[key]['name'], value]
               end
-
+          elsif (fields[key]['optype'] == 'numeric' and !!value == value)
+             raise ArgumentError "Mismatch input data type in field
+                                     %s for value %s. Numeric expected." % [fields[key]['name'], value]
           end
 
        end

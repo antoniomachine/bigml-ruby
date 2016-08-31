@@ -111,7 +111,35 @@ module BigML
         return @models.collect {|model| model.resource() }
       end
 
-      def predict(input_data, by_name=true, method=PLURALITY_CODE,
+      def predict(input_data, options={})
+        # Makes a prediction based on the prediction made by every model.
+
+        # The method parameter is a numeric key to the following combination
+        #  methods in classifications/regressions:
+        #     0 - majority vote (plurality)/ average: PLURALITY_CODE
+        #     1 - confidence weighted majority vote / error weighted:
+        #         CONFIDENCE_CODE
+        #     2 - probability weighted majority vote / average:
+        #         PROBABILITY_CODE
+        #     3 - threshold filtered vote / doesn't apply:
+        #         THRESHOLD_COD
+        # 
+        return _predict(input_data,
+                        options.key?("by_name") ? options["by_name"] : true,
+                        options.key?("method") ? options["method"] : PLURALITY_CODE,
+                        options.key?("with_confidence") ? options["with_confidence"] : false,
+                        options.key?("options") ? options["options"] : nil,
+                        options.key?("missing_strategy") ? options["missing_strategy"] : LAST_PREDICTION, 
+                        options.key?("add_confidence") ? options["add_confidence"] : false,
+                        options.key?("add_distribution") ? options["add_distribution"] : false,
+                        options.key?("add_count") ? options["add_count"] : false,
+                        options.key?("add_median") ? options["add_median"] : false, 
+                        options.key?("add_min") ? options["add_min"] : false,
+                        options.key?("add_max") ? options["add_max"] : false,
+                        options.key?("add_unused_fields") ? options["add_unused_fields"] : false)
+      end
+
+      def _predict(input_data, by_name=true, method=PLURALITY_CODE,
                   with_confidence=false, options=nil,
                   missing_strategy=LAST_PREDICTION,
                   add_confidence=false,
@@ -119,7 +147,8 @@ module BigML
                   add_count=false,
                   add_median=false,
                   add_min=false,
-                  add_max=false)
+                  add_max=false,
+                  add_unused_fields=false)
          # Makes a prediction based on the prediction made by every model.
 
          # The method parameter is a numeric key to the following combination
@@ -136,31 +165,53 @@ module BigML
          votes = generate_votes(input_data, by_name,
                                 missing_strategy,
                                 add_median, add_min,
-                                add_max)
+                                add_max, add_unused_fields)
 
-         return votes.combine(method, with_confidence, add_confidence,
+
+
+         result = votes.combine(method, with_confidence, add_confidence,
                               add_distribution, add_count,
                               add_median, add_min, add_max, options)
-                             
 
+         if add_unused_fields
+             unused_fields = input_data.keys.uniq
+
+             votes.predictions.each_with_index do |prediction, index|
+                 unused_fields = unused_fields & prediction["unused_fields"].uniq
+             end
+
+             if !result.is_a?(Hash)
+                 result = {"prediction" => result}
+             end
+
+             result['unused_fields'] = unused_fields
+
+          end
+                             
+          return result
       end
 
       def generate_votes(input_data, by_name=true,
                          missing_strategy=LAST_PREDICTION,
-                         add_median=false, add_min=false, add_max=false)
+                         add_median=false, add_min=false, 
+                         add_max=false, add_unused_fields=false)
 
          # Generates a MultiVote object that contains the predictions
          #   made by each of the models.
          votes = MultiVote.new([])
          (0..(@models.size-1)).each do |order|
             model = @models[order]
-            prediction_info = model.predict(input_data, by_name,
-                                            false, $STDOUT, false,
-                                            missing_strategy, true,
-                                            false, true, true,
-                                            add_median, false,
-                                            add_min, add_max, nil)
 
+            prediction_info = model.predict(input_data, 
+                                   {'by_name' => by_name,
+                                    'missing_strategy' => missing_strategy,
+                                    'add_confidence' => true,
+                                    'add_distribution' => true,
+                                    'add_count' => true,
+                                    'add_median' => add_median,
+                                    'add_min' => add_min,
+                                    'add_max'  => add_max,
+                                    'add_unused_fields' => add_unused_fields})
 
             votes.append(prediction_info)
          end
@@ -228,8 +279,10 @@ module BigML
                    input_data = Hash[headers.zip(input_data).collect { |item| [item[0], item[1]] } ]
                end
 
-               prediction = model.predict(input_data, by_name, false,
-                                          $STDOUT, true, missing_strategy)
+               prediction = model.predict(input_data, {'by_name' => by_name,
+                                                       'with_confidence' => true,
+                                                       'missing_strategy' => missing_strategy})
+
                if use_median and model.tree.regression
                   # if median is to be used, we just place it as prediction
                   # starting the list

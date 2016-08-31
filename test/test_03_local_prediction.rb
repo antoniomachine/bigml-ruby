@@ -31,7 +31,8 @@ class TestLocalPredicction < Test::Unit::TestCase
        model = BigML::Model.new(item["filename"], @api)
 
        puts "When I create a local prediction for "+JSON.generate(item["data_input"])+" with confidence"
-       prediction = model.predict(item["data_input"], true, false, $STDOUT, false, BigML::LAST_PREDICTION, true)
+       prediction = model.predict(item["data_input"], {'add_confidence' => true})
+ 
        puts "Then the local prediction is %s " % item["prediction"]
        assert_equal(prediction["prediction"], item["prediction"])
 
@@ -55,7 +56,7 @@ class TestLocalPredicction < Test::Unit::TestCase
        model =  BigML::Model.new(item["filename"], @api)
 
        puts "When I create a local prediction for "+JSON.generate(item["data_input"])
-       prediction = model.predict(item["data_input"], true, false, $STDOUT, false, BigML::LAST_PREDICTION, false, false, false, false, false, false, false, false, 'all')
+       prediction = model.predict(item["data_input"], {'multiple' => 'all'}) 
        
        puts "Then the multiple local prediction is "+JSON.generate(item["prediction"])
        assert_equal(prediction, item["prediction"])

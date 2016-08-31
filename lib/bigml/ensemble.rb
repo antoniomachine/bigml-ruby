@@ -175,10 +175,69 @@ module BigML
         return @model_ids 
       end
 
-      def predict(input_data, by_name=true, method=PLURALITY_CODE,
+      def predict(input_data, options={})
+        # Makes a prediction based on the prediction made by every model.
+
+        # :param input_data: Test data to be used as input
+        # :param by_name: Boolean that is set to True if field_names (as
+        #                alternative to field ids) are used in the
+        #                input_data dict
+        # :param method: numeric key code for the following combination
+        #               methods in classifications/regressions:
+        #      0 - majority vote (plurality)/ average: PLURALITY_CODE
+        #      1 - confidence weighted majority vote / error weighted:
+        #          CONFIDENCE_CODE
+        #      2 - probability weighted majority vote / average:
+        #          PROBABILITY_CODE
+        #      3 - threshold filtered vote / doesn't apply:
+        #          THRESHOLD_CODE
+        # The following parameter causes the result to be returned as a list
+        # :param with_confidence: Adds the confidence, distribution, counts
+        #                        and median information to the node prediction.
+        #                        The result is given in a list format output.
+        # The following parameters cause the result to be returned as a dict
+        # :param add_confidence: Adds confidence to the prediction
+        # :param add_distribution: Adds the predicted node's distribution to the
+        #                         prediction
+        # :param add_count: Adds the predicted nodes' instances to the
+        #                   prediction
+        # :param add_median: Adds the median of the predicted nodes' distribution
+        #                   to the prediction
+        # :param add_min: Boolean, if True adds the minimum value in the
+        #                prediction's distribution (for regressions only)
+        # :param add_unused_fields: Boolean, if True adds the information about
+        #                the fields in the input_data that are not
+        #                 being used in the model as predictors. 
+        # :param add_max: Boolean, if True adds the maximum value in the
+        #                prediction's distribution (for regressions only)
+        # :param options: Options to be used in threshold filtered votes.
+        # :param missing_strategy: numeric key for the individual model's
+        #                         prediction method. See the model predict
+        #                         method.
+        # :param median: Uses the median of each individual model's predicted
+        #               node as individual prediction for the specified
+        #               combination method.
+        #  
+         return _predict(input_data,
+                        options.key?("by_name") ? options["by_name"] : true,
+                        options.key?("method") ? options["method"] : PLURALITY_CODE,
+                        options.key?("with_confidence") ? options["with_confidence"] : false,
+                        options.key?("add_confidence") ? options["add_confidence"] : false,
+                        options.key?("add_distribution") ? options["add_distribution"] : false,
+                        options.key?("add_count") ? options["add_count"] : false,
+                        options.key?("add_median") ? options["add_median"] : false,
+                        options.key?("add_min") ? options["add_min"] : false,
+                        options.key?("add_max") ? options["add_max"] : false,
+                        options.key?("add_unused_fields") ? options["add_unused_fields"] : false,
+                        options.key?("options") ? options["options"] : nil,
+                        options.key?("missing_strategy") ? options["missing_strategy"] : LAST_PREDICTION,
+                        options.key?("median") ? options["median"] : false)
+      end
+
+      def _predict(input_data, by_name=true, method=PLURALITY_CODE,
                 with_confidence=false, add_confidence=false,
                 add_distribution=false, add_count=false, add_median=false,
-                add_min=false, add_max=false,
+                add_min=false, add_max=false, add_unused_fields=false,
                 options=nil, missing_strategy=LAST_PREDICTION, median=false)
 
           if @models_splits.size > 1
@@ -204,7 +263,7 @@ module BigML
                                          input_data, by_name,
                                          missing_strategy, 
                                          (add_median or median),
-                                         add_min, add_max) 
+                                         add_min, add_max, add_unused_fields)
                if median
                   votes_split.predictions.each do|prediction|
                     prediction['prediction'] = prediction['median']
@@ -219,7 +278,7 @@ module BigML
             votes_split = @multi_model.generate_votes(input_data, by_name,
                                                      missing_strategy, 
                                                      (add_median or median),
-                                                     add_min, add_max)
+                                                     add_min, add_max, add_unused_fields)
             
             votes = BigML::MultiVote.new(votes_split.predictions)
             if median
@@ -230,11 +289,28 @@ module BigML
 
           end
 
-          return votes.combine(method, with_confidence,
+          result = votes.combine(method, with_confidence,
                                add_confidence, add_distribution,
                                add_count, add_median, add_min,
                                add_max, options)
 
+          if add_unused_fields
+             unused_fields = input_data.keys.uniq
+ 
+             votes.predictions.each_with_index do |prediction, index|
+                 unused_fields = unused_fields & prediction["unused_fields"].uniq
+             end
+
+             if !result.is_a?(Hash)
+                 result = {"prediction" => result}
+             end
+
+             result['unused_fields'] = unused_fields
+  
+          end
+
+
+          return result
       end
 
 

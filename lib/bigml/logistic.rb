@@ -221,13 +221,26 @@ module BigML
       end
 
 
-      def predict(input_data, by_name=true)
+      def predict(input_data, by_name=true, add_unused_fields=false)
          #
          # Returns the class prediction and the probability distribution
-         #
+         # By default the input fields must be keyed by field name but you can use
+         # `by_name` to input them directly keyed by id.
+         
+         # input_data: Input data to be predicted
+         # by_name: Boolean, True if input_data is keyed by names
+         # add_unused_fields: Boolean, if True adds the information about the
+         #                    fields in the input_data that are not being used
+         #                    in the model as predictors. 
 
          # Checks and cleans input_data leaving the fields used in the model
-         input_data = filter_input_data(input_data, by_name)
+         new_data = filter_input_data(input_data, by_name, add_unused_fields)
+
+         if add_unused_fields
+           input_data, unused_fields = new_data
+         else
+           input_data = new_data
+         end
 
          # In case that missing_numerics is False, checks that all numeric
          # fields are present in input data.
@@ -289,11 +302,17 @@ module BigML
          end
          prediction, probability = predictions[0]
 
-         return {"prediction" => prediction,
-                 "probability" => probability["probability"],
-                 "distribution" => predictions.collect {|category,probability| 
+         result = {"prediction" => prediction,
+                   "probability" => probability["probability"],
+                   "distribution" => predictions.collect {|category,probability| 
 							  {"category" => category,  
                                                            "probability" => probability["probability"]}}}
+
+         if add_unused_fields
+            result['unused_fields'] = unused_fields
+         end
+
+         return result
 
       end
 
@@ -415,7 +434,7 @@ module BigML
 
          probability += bias
  
-         if bias != 0
+         if @bias != 0
            norm2 += 1
          end
 
