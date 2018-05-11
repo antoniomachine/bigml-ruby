@@ -14,11 +14,11 @@ Gem::Specification.new do |spec|
   spec.description   = %q{BigML makes machine learning easy by taking care of the details required to add data-driven decisions and predictive power to your company. Unlike other machine learning services, BigML creates beautiful predictive models that can be easily understood and interacted with}
   spec.homepage      = "https://github.com/antoniomachine/bigml-ruby"
 
-  spec.add_runtime_dependency     'rest-client', '~> 2.1.0.rc1'
-  spec.add_runtime_dependency     'json', '~> 1.8'
-  spec.add_runtime_dependency     'activesupport', '~> 3' 
-  spec.add_runtime_dependency     'parsr', '~> 0.0.4'
-  spec.add_runtime_dependency     'pycall', '~>1.0.3'
+  spec.add_runtime_dependency     'rest-client', '~>2.1.0.rc1'
+  spec.add_runtime_dependency     'json', '~>2.1'
+  spec.add_runtime_dependency     'activesupport', '~>4.1', '>= 4.1.11' 
+  spec.add_runtime_dependency     'parsr', '~>0.0.4'
+  spec.add_runtime_dependency     'pycall', '~>1.0', '>= 1.0.3'
   spec.add_runtime_dependency     'numo-narray', '~>0.9.1.2'
   spec.add_runtime_dependency     'ruby-stemmer','~>0.9.6'
 
