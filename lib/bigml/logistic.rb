@@ -28,40 +28,28 @@ require_relative 'modelfields'
 require_relative 'cluster'
 
 module BigML
- 
-   def self.get_unique_terms(terms, term_forms, tag_cloud)
-      #
-      # Extracts the unique terms that occur in one of the alternative forms in
-      # term_forms or in the tag cloud.
-      #
-
-      extend_forms = {}
-      term_forms.each do |term, forms|
-        forms.each do |form|
-           extend_forms[form] = term
-        end
-        extend_forms[term] = term
-      end
- 
-      terms_set={}
- 
-      terms.each do |term|
-         if tag_cloud.include?(term)
-             if !terms_set.include?(term)
-                terms_set[term] = 0
-             end
-             terms_set[term] += 1
-         elsif extend_forms.include?(term)
-            term = extend_forms[term]
-            if !terms_set.include?(term)
-               terms_set[term] = 0 
-            end
-            terms_set[term] += 1
-         end
-      end
- 
-      return terms_set.collect {|k,v| [k,v]}
-
+   
+   def self.balance_input(input_data, fields)
+     # Balancing the values in the input_data using the corresponding
+     # field scales
+     #
+     input_data.each do |field, value|
+       if fields[field]['optype'] == 'numeric'
+          mean = fields[field]['summary'].fetch('mean', 0)
+          stddev = fields[field]['summary'].fetch('standard_deviation',0)
+          
+          if mean.nil?
+            mean=0
+          end
+          
+          if stddev.nil?
+            stddev=0
+          end  
+          # if stddev is not positive, we only substract the mean
+          input_data[field] = (stddev <=0) ? (input_data[field] - mean) : 
+                                   (input_data[field] - mean) / stddev
+       end
+     end
    end
 
    class Logistic < ModelFields
@@ -72,6 +60,7 @@ module BigML
 
       def initialize(logistic_regression, api=nil)
          @resource_id = nil
+         @class_names = nil
          @input_fields = []
          @term_forms = {}
          @tag_clouds = {}
@@ -92,6 +81,15 @@ module BigML
          @regularization = nil
          old_coefficients = false
 
+         # checks whether the information needed for local predictions is in
+         # the first argument
+         if logistic_regression.is_a?(Hash)  and !BigML::check_model_fields(logistic_regression)
+           # if the fields used by the logistic regression are not
+           # available, use only ID to retrieve it again
+           logistic_regression = BigML::get_logistic_regression_id(logistic_regression)
+           @resource_id = logistic_regression
+         end
+
          if !(logistic_regression.is_a?(Hash) and 
              logistic_regression.include?('resource') and
               !logistic_regression['resource'].nil?)
@@ -102,7 +100,7 @@ module BigML
 
             @resource_id = BigML::get_logisticregression_id(logistic_regression)
             if @resource_id.nil?
-                raise Exception
+                raise Exception,
                     api.error_message(logistic_regression,
                                       'logistic_regression',
                                       'get')
@@ -110,6 +108,7 @@ module BigML
             query_string = BigML::ONLY_MODEL
             logistic_regression = BigML::retrieve_resource(
                 api, @resource_id, query_string)
+            
          else
             @resource_id = BigML::get_logisticregression_id(logistic_regression)
          end
@@ -129,14 +128,14 @@ module BigML
             end
 
          rescue Exception
-            raise ArgumentError "Failed to find the logistic regression expected
+            raise ArgumentError, "Failed to find the logistic regression expected
                                 JSON structure. Check your arguments."
          end
  
          if logistic_regression.include?('logistic_regression') and 
                logistic_regression['logistic_regression'].is_a?(Hash)
 
-            status = BigML::get_status(logistic_regression)
+            status = BigML::Util::get_status(logistic_regression)
             if status.include?('code') and status['code'] == FINISHED
               logistic_regression_info = logistic_regression['logistic_regression']
               fields = logistic_regression_info.fetch('fields', {})
@@ -156,7 +155,7 @@ module BigML
                   old_coefficients = true
               end
 
-              @bias = logistic_regression_info.fetch('bias', 0)
+              @bias = logistic_regression_info.fetch('bias', true)
               @c = logistic_regression_info.fetch('c')
               @eps = logistic_regression_info.fetch('eps')
               @lr_normalize = logistic_regression_info.fetch('normalize')
@@ -168,32 +167,8 @@ module BigML
               # this case
               @missing_numerics = logistic_regression_info.fetch('missing_numerics', false)
               objective_id = BigML::extract_objective(objective_field)
-              fields.each do |field_id, field|
-                 if field['optype'] == 'text'
-                   @term_forms[field_id] = {}
-                   @term_forms[field_id] = field['summary']['term_forms'].clone 
-                   @tag_clouds[field_id] = []
-                   @tag_clouds[field_id] = field['summary']['tag_cloud'].collect{|tag,value| tag}
-
-                   @term_analysis[field_id] = {}
-                   @term_analysis[field_id] =  field['term_analysis'].clone
-
-                 elsif field['optype'] == 'items'
-                   @items[field_id] = []
-                   @items[field_id] = field['summary']['items'].collect {|item,value| item }
-                   @item_analysis[field_id] = {}
-                   @item_analysis[field_id] = field['item_analysis'].clone
-                 elsif field['optype'] == 'categorical'
-                   @categories[field_id] = field['summary']['categories'].collect {
-							|category,value| category }
-                 end
-
-                 if @missing_numerics and field['optype'] == 'numeric'
-                      @numeric_fields[field_id] = true
-                 end
-              end
-
-              super(fields, objective_id)
+                                  
+              super(fields, objective_id, nil, nil, true, true, true)
                
               @field_codings = logistic_regression_info.fetch('field_codings', {})
               format_field_codings() 
@@ -208,39 +183,183 @@ module BigML
               if old_coefficients
                  map_coefficients()
               end
+              
+              categories =@fields[@objective_id].fetch("summary", {}).fetch('categories')
+
+              if @coefficients.keys.size > categories.size
+                @class_names = [""]
+              else
+                @class_names = []
+              end    
+              
+              @class_names += categories.collect {|category| category[0]}.sort
+              
 
             else
-               raise Exception "The logistic regression isn't finished yet"
+               raise Exception, "The logistic regression isn't finished yet"
             end
          else
-            raise Exception "Cannot create the LogisticRegression instance.
+            raise Exception, "Cannot create the LogisticRegression instance.
                              Could not find the 'logistic_regression' key
                              in the resource:\n\n%s" % logistic_regression
          end
 
       end
+      
+      def _sort_predictions(a, b, criteria)
+        # Sorts the categories in the predicted node according to the
+        # given criteria
+      
+        if a[criteria] == b[criteria]
+          return sort_categories(a, b, @objective_categories)
+        end  
+        
+        return  b[criteria] > a[criteria] ? 1 : - 1
+      
+      end
 
+      def predict_probability(input_data, compact=false)
+        
+        # Predicts a probability for each possible output class,
+        # based on input values.  The input fields must be a dictionary
+        # keyed by field name or field ID.
+        # :param input_data: Input data to be predicted
+        # input_data dict
+        # :param compact: If False, prediction is returned as a list of maps, one
+        # per class, with the keys "prediction" and "probability"
+        # mapped to the name of the class and it's probability,
+        # respectively.  If True, returns a list of probabilities
+        # ordered by the sorted order of the class names.
+        distribution = self.predict(input_data, {"full" => true})['distribution']
+        distribution = distribution.sort_by{|x| x['category']}
+        
+        if compact
+          return distribution.collect {|category| category['probability']}
+        else
+          return distribution
+        end
+        
+      end
+      
+      def predict_operating(input_data,
+                            operating_point=nil)
+        #                    
+        # Computes the prediction based on a user-given operating point.
+        #
 
-      def predict(input_data, by_name=true, add_unused_fields=false)
+        kind, threshold, positive_class = BigML::parse_operating_point(
+            operating_point, ["probability"], @class_names)
+            
+        predictions = self.predict_probability(input_data, false)
+        
+        position = @class_names.index(positive_class)
+        
+        if predictions[position][kind] > threshold
+            prediction = predictions[position]
+        else    
+            # if the threshold is not met, the alternative class with
+            # highest probability or confidence is returned
+            prediction = predictions.sort_by {|p| [-p[kind], p['category']]}[0..1]
+               
+            if prediction[0]["category"] == positive_class
+                prediction = prediction[1]
+            else
+                prediction = prediction[0]
+            end
+        end
+        
+        prediction["prediction"] = prediction["category"]
+        prediction.delete("category")
+        return prediction
+              
+      end
+      
+      def predict_operating_kind(input_data,
+                                 operating_kind=nil)
+        #
+        # Computes the prediction based on a user-given operating kind.
+        #
+      
+        kind = operating_kind.downcase
+        
+        if kind == "probability"
+            predictions = self.predict_probability(input_data,
+                                                   false)
+        else
+          raise ArgumentError.new("Only probability is allowed as operating kind
+                              for logistic regressions.")
+        end
+        
+        prediction = predictions.sort_by {|p| [-p[kind], p['category']]}[0]
+        
+        prediction["prediction"] = prediction["category"]
+        prediction.delete("category")
+        
+        return prediction
+     end
+     
+     def predict(input_data, options={})
+       return _predict(input_data,
+                      options.key?("operating_point") ? options["operating_point"] : nil,
+                      options.key?("operating_kind") ? options["operating_kind"] : nil,
+                      options.key?("full") ? options["full"] : false)
+     end 
+      
+     def _predict(input_data, operating_point=nil, operating_kind=nil, full=false)
          #
          # Returns the class prediction and the probability distribution
          # By default the input fields must be keyed by field name but you can use
          # `by_name` to input them directly keyed by id.
          
-         # input_data: Input data to be predicted
-         # by_name: Boolean, True if input_data is keyed by names
-         # add_unused_fields: Boolean, if True adds the information about the
-         #                    fields in the input_data that are not being used
-         #                    in the model as predictors. 
-
+         # input_data: Input data to be predicted
+         # operating_point: In classification models, this is the point of the
+         #                          ROC curve where the model will be used at. The
+         #                          operating point can be defined in terms of:
+         #                          - the positive_class, the class that is important to
+         #                            predict accurately
+         #                          - the probability_threshold,
+         #                            the probability that is stablished
+         #                            as minimum for the positive_class to be predicted.
+         #                          The operating_point is then defined as a map with
+         #                          two attributes, e.g.:
+         #                            {"positive_class": "Iris-setosa",
+         #                             "probability_threshold": 0.5}
+         # operating_kind: "probability". Sets the
+         #                  property that decides the prediction. Used only if
+         #                 no operating_point is used
+         #  full: Boolean that controls whether to include the prediction's
+         #              attributes. By default, only the prediction is produced. If set
+         #              to True, the rest of available information is added in a
+         #              dictionary format. The dictionary keys can be:
+         #                  - prediction: the prediction value
+         #                  - probability: prediction's probability
+         #                  - distribution: distribution of probabilities for each
+         #                                  of the objective field classes
+         #                  - unused_fields: list of fields in the input data that
+         #                                   are not being used in the model
          # Checks and cleans input_data leaving the fields used in the model
-         new_data = filter_input_data(input_data, by_name, add_unused_fields)
-
-         if add_unused_fields
+         unused_fields = []
+         new_data = filter_input_data(input_data, full)
+         if full
            input_data, unused_fields = new_data
          else
            input_data = new_data
          end
+         
+         # Strips affixes for numeric values and casts to the final field type
+         BigML::Util::cast(input_data, @fields)
+          
+         # When operating_point is used, we need the probabilities
+         # of all possible classes to decide, so se use
+         # the `predict_probability` method
+         
+         if !operating_point.nil?
+            return self.predict_operating(input_data, operating_point)
+         end
+         
+         if !operating_kind.nil?
+           return self.predict_operating_kind(input_data, operating_kind)
+         end 
 
          # In case that missing_numerics is False, checks that all numeric
          # fields are present in input data.
@@ -248,7 +367,7 @@ module BigML
             @fields.each do |field_id, field|
                if !OPTIONAL_FIELDS.include?(field['optype']) and 
                   !input_data.include?(field_id)
-                  raise Exception "Failed to predict. Input 
+                  raise Exception, "Failed to predict. Input 
                                   data must contain values for all numeric
                                   fields to get a logistic regression prediction."
                end      
@@ -256,30 +375,27 @@ module BigML
 
          end
 
-         # Strips affixes for numeric values and casts to the final field type
-         BigML::Util::cast(input_data, @fields)
-
          if !@balance_fields.nil? and @balance_fields
-            input_data.each do |field, value|
-              if @fields[field]['optype'] == 'numeric'
-                 mean = @fields[field]['summary']['mean']
-                 stddev = @fields[field]['summary']['standard_deviation']
-                 input_data[field] = (input_data[field] - mean) / stddev
-              end
-            end
-
+           BigML::balance_input(input_data, @fields)
          end
 
          # Compute text and categorical field expansion
          unique_terms = get_unique_terms(input_data)
-
          probabilities = {}
          total = 0
-
+         # Computes the contributions for each category
          @coefficients.keys.each do |category|
+           
             probability = category_probability(input_data,
                                          unique_terms, category)
-            order = @categories[@objective_id].index(category)
+            begin   
+              order = @categories[@objective_id].index(category)
+              order
+            rescue
+              if category == ""
+                 order =  @categories[@objective_id].size
+              end    
+            end
             probabilities[category] = {"category" => category,
                                        "probability" => probability, 
                                        "order" => order} 
@@ -288,12 +404,13 @@ module BigML
                              
          end
          
-
+         # Normalizes the contributions to get a probability
          probabilities.keys.each do |category| 
-           probabilities[category]["probability"] /= total 
+           probabilities[category]["probability"] /= total
+           probabilities[category]["probability"]=probabilities[category]["probability"].round(BigML::Util::PRECISION) 
          end
          
-
+         # Chooses the most probable category as prediction
          predictions = probabilities.sort_by {|i,x| [x["probability"],-x["order"]] }.reverse
 
 
@@ -308,43 +425,42 @@ module BigML
 							  {"category" => category,  
                                                            "probability" => probability["probability"]}}}
 
-         if add_unused_fields
-            result['unused_fields'] = unused_fields
+         if full
+           result['unused_fields'] = unused_fields
+         else
+           result = result["prediction"]
          end
 
          return result
 
       end
 
-      def category_probability(input_data, unique_terms, category)
+      def category_probability(numeric_inputs, unique_terms, category)
          #
-         # Computes the probability for a concrete category
+         # Computes the probability for a concrete category
          #
-
          probability = 0
          norm2 = 0
-         # the bias term is the last in the coefficients list
-         bias = @coefficients[category][@coefficients[category].size - 1][0]
          # numeric input data
-         input_data.each do |field_id, value|
+         numeric_inputs.each do |field_id, value|
             coefficients = get_coefficients(category, field_id)
-            probability += coefficients[0] * input_data[field_id]
-            norm2 += input_data[field_id] ** 2
+            probability += coefficients[0] * numeric_inputs[field_id]
+            if @lr_normalize
+              norm2 += numeric_inputs[field_id] ** 2
+            end  
          end
 
          unique_terms.each do |field_id, value|
-
             if @input_fields.include?(field_id)
-
                coefficients = get_coefficients(category, field_id)
-
                unique_terms[field_id].each do |term,occurrences|
+                
                   begin
                      one_hot = true
                      if @tag_clouds.include?(field_id)
-                        index = @tag_clouds[field_id].index(term)
+                        index = @tag_clouds[field_id].index{|it| it == term}
                      elsif @items.include?(field_id)
-                        index = @items[field_id].index(term)
+                        index = @items[field_id].index{|it| it == term}
                      elsif  @categories.include?(field_id) and (
                             !@field_codings.include?(field_id) or 
                             @field_codings[field_id].keys[0] == "dummy")
@@ -364,77 +480,65 @@ module BigML
                         probability += coefficients[index] * occurrences
                      end
                      norm2 += occurrences ** 2
-                  rescue Exception
-                     next
+                  #rescue Exception
+                  #   next
                   end
                end
 
             end
 
          end
-
-         @numeric_fields.each do |field_id, value|
-            if @input_fields.include?(field_id)
-                coefficients = get_coefficients(category, field_id)
-                if !input_data.include?(field_id)
-                    probability += coefficients[1]
-                    norm2 += 1
-                end
-            end
-         end
-
-
-         @tag_clouds.each do |field_id, value|
-            if @input_fields.include?(field_id)
-                coefficients = get_coefficients(category, field_id)
-                if !unique_terms.include?(field_id) or (unique_terms[field_id].nil? or unique_terms[field_id].empty?)
-                   norm2 += 1
-                   probability += coefficients[value.size]
-                end
-            end
-         end
-
-         @items.each do |field_id, value|
-            if @input_fields.include?(field_id)
-               coefficients = get_coefficients(category, field_id)
-               if !unique_terms.include?(field_id) or (unique_terms[field_id].nil? or unique_terms[field_id].empty?)
-                   norm2 += 1
-                   probability += coefficients[value.size]
-               end
-            end
-         end
-
-         @categories.each do |field_id, value|
-            if @input_fields.include?(field_id)
-                coefficients = get_coefficients(category, field_id)
-                if field_id != @objective_id  and
-                     !unique_terms.include?(field_id)
-                   
-                   norm2 += 1
-                   if !@field_codings.include?(field_id) or
-                        @field_codings[field_id].keys[0] = "dummy"
-                       shift = @fields[field_id]['coefficients_shift']
-                       probability += coefficients[value.size]
-                   else
-                      #  codings are given as arrays of coefficients. The
-                      #  last one is for missings and the previous ones are
-                      #  one per category as found in summary
-                     coeff_index = 0
-                     @field_codings[field_id].values[0].each do |contribution|
-                        probability += coefficients[coeff_index] * contribution[-1]
-                        coeff_index += 1
-                     end
-                   end
-
-                end
- 
-            end
-
-         end
-
-         probability += bias
- 
-         if @bias != 0
+         
+         # missings
+         @input_fields.each do |field_id, value|
+           contribution = false
+           coefficients = get_coefficients(category, field_id)
+           if @numeric_fields.include?(field_id) and 
+              !numeric_inputs.include?(field_id)
+              probability += coefficients[1]
+              contribution=true
+           elsif @tag_clouds.include?(field_id) && 
+                  (!unique_terms.include?(field_id) or (unique_terms[field_id].nil? or 
+                                                        unique_terms[field_id].empty?))
+              probability += coefficients[@tag_clouds[field_id].size]
+              contribution = true
+           elsif @items.include?(field_id) && 
+                  (!unique_terms.include?(field_id) or (unique_terms[field_id].nil? or 
+                                                        unique_terms[field_id].empty?))
+                                      
+               probability += coefficients[@items[field_id].size]
+               contribution = true
+               
+           elsif @categories.include?(field_id) && field_id != @objective_id && 
+                 !unique_terms.include?(field_id)
+             
+             if !@field_codings.include?(field_id) or 
+                @field_codings[field_id].keys[0] == "dummy"
+                probability += coefficients[@categories[field_id].size]
+             else
+                # codings are given as arrays of coefficients. The
+                # last one is for missings and the previous ones are
+                # one per category as found in summary
+                #
+                coeff_index = 0
+                @field_codings[field_id].values[0].each do |contribution|
+                   probability += coefficients[coeff_index] * contribution[-1]
+                   coeff_index += 1
+                end 
+             end
+             
+             contribution = true
+           end 
+           
+           if contribution and @lr_normalize
+              norm2 += 1
+           end
+         end 
+         
+          # the bias term is the last in the coefficients list
+         probability += @coefficients[category][@coefficients[category].size - 1][0]
+                      
+         if @bias
            norm2 += 1
          end
 
@@ -453,84 +557,12 @@ module BigML
             probability = probability < 0 ? 0 : 1
          end
 
+         # truncate probability to 5 digits, as in the backend
+         probability = probability.round(5)
+         
          return probability
  
       end
-
-      def get_unique_terms(input_data)
-         # Parses the input data to find the list of unique terms in the
-         #  tag cloud
-         #
-         unique_terms = {}
-         @term_forms.each do |field_id, value|
-            if input_data.key?(field_id)
-                input_data_field = input_data.fetch(field_id, '')
-                if input_data_field.is_a?(String)
-                    case_sensitive = @term_analysis[field_id].fetch(
-                        'case_sensitive', true)
-                    token_mode = @term_analysis[field_id].fetch(
-                        'token_mode', 'all')
-                    if token_mode != BigML::TM_FULL_TERM
-                        terms = BigML::parse_terms(input_data_field,
-                                            case_sensitive)
-                    else
-                        terms = []
-                    end
-
-                    full_term = case_sensitive ? input_data_field :  
-                                                 input_data_field.downcase
-                    # We add full_term if needed. Note that when there's
-                    # only one term in the input_data, full_term and term are
-                    # equal. Then full_term will not be added to avoid
-                    # duplicated counters for the term.
-                    if token_mode == BigML::TM_FULL_TERM or 
-                            (token_mode == BigML::TM_ALL and terms[0] != full_term)
-                        terms << full_term
-                    end
-                    unique_terms[field_id] = BigML::get_unique_terms(
-                        terms, @term_forms[field_id],
-                        @tag_clouds.fetch(field_id, []))
-                else
-                    unique_terms[field_id] = [[input_data_field, 1]]
-                end
-                input_data.delete(field_id)
-            end
-         end 
-         # the same for items fields
-         @item_analysis.each do |field_id, value|
-            if input_data.include?(field_id)
-               input_data_field = input_data.fetch(field_id, '')
-               if input_data_field.is_a?(String)
-                  # parsing the items in input_data
-                  separator = @item_analysis[field_id].fetch(
-                        'separator', ' ')
-                  regexp = @item_analysis[field_id].fetch(
-                        'separator_regexp', nil)
-                  if regexp.nil?
-                     regexp = '%s' % Regexp.quote(separator)
-                  end
-                  terms = BigML::parse_items(input_data_field, regexp)
-                  unique_terms[field_id] = BigML::get_unique_terms(terms, {},
-                                          @items.fetch(field_id, []))
- 
-               else 
-                  unique_terms[field_id] = [[input_data_field, 1]]
-               end
-               input_data.delete(field_id)
-            end
-         end
- 
-         @categories.each do |field_id, value|
-           if input_data.include?(field_id)
-              input_data_field = input_data.fetch(field_id, '')
-              unique_terms[field_id] = [[input_data_field, 1]]
-              input_data.delete(field_id)
-           end
-         end
-
-         return unique_terms
-
-      end 
 
       def map_coefficients()
          #

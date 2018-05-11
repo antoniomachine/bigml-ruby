@@ -81,9 +81,9 @@ module BigML
         @discretization = {}
         @field_discretizations = {}
         @items = []
-        @k = nil
+        @max_k = nil
         @max_lhs = nil
-        @min_coverage = nil
+        @min_confidence = nil
         @min_leverage = nil
         @min_strength = nil
         @min_support = nil
@@ -93,8 +93,8 @@ module BigML
         @rules = []
         @significance_level = nil
 
-        if (association.is_a?(Array) and 
-            association.include?('resource') and 
+        if !(association.is_a?(Hash) and 
+            association.key?('resource') and 
              !association['resource'].nil?)
 
             if api.nil?
@@ -103,13 +103,12 @@ module BigML
 
             @resource_id = BigML::get_association_id(association)
             if @resource_id.nil?
-                raise Exception api.error_message(association,
+                raise Exception, api.error_message(association,
                                                  'association',
                                                   'get')
             end
             query_string = ONLY_MODEL
-            association = retrieve_resource(api, @resource_id,
-                                            query_string)
+            association = BigML::retrieve_resource(api, @resource_id, query_string)
         else
             @resource_id = BigML::get_association_id(association)
         end
@@ -121,7 +120,7 @@ module BigML
 
         if association.include?('associations') and 
               association["associations"].is_a?(Hash)
-           status = BigML::get_status(association)
+           status = BigML::Util::get_status(association)
            if status.include?('code') and status['code'] == FINISHED
               
               associations = association['associations']
@@ -137,9 +136,9 @@ module BigML
                  @items << Item.new(index, item, fields)
               end
 
-              @k = associations.fetch('k', 100)
+              @max_k = associations.fetch('k', 100)
               @max_lhs = associations.fetch('max_lhs', 4)
-              @min_coverage = associations.fetch('min_coverage', 0)
+              @min_confidence = associations.fetch('min_confidence', 0)
               @min_leverage = associations.fetch('min_leverage', -1)
               @min_strength = associations.fetch('min_strength', 0)
               @min_support = associations.fetch('min_support', 0)
@@ -157,17 +156,17 @@ module BigML
                             'significance_level', 0.05)
 
            else
-             raise Exception "The association isn't finished yet"
+             raise Exception, "The association isn't finished yet"
            end
         else
-           raise Exception "Cannot create the Association instance. Could not
-                            find the 'associations' key in the 
-                            resource:\n\n%s" % association
+           raise  Exception, "Cannot create the Association instance. Could not
+                             find the 'associations' key in the 
+                             resource:\n\n%s" % association
         end
 
       end
 
-      def association_set(input_data,k=DEFAULT_K, score_by=nil, by_name=true)
+      def association_set(input_data,k=DEFAULT_K, score_by=nil)
          # Returns the Consequents for the rules whose LHS best match
          #   the provided items. Cosine similarity is used to score the match.
 
@@ -193,13 +192,13 @@ module BigML
 
          predictions = {}
          if !score_by.nil? and !SCORES.include?(score_by)
-            raise ArgumentError "The available values of 
+            raise ArgumentError, "The available values of 
                                  score_by are: %s" % SCORES.join(", ")
          end
 
-         input_data = filter_input_data(input_data, by_name)
+         input_data = filter_input_data(input_data)
          # retrieving the items in input_data
-         items_indexes= get_items(input_map=input_data).collect {|item| item.index }
+         items_indexes= get_items(nil,nil,input_data).collect {|item| item.index }
 
          if score_by.nil?
             score_by = @search_strategy 
@@ -221,17 +220,22 @@ module BigML
                next
             end
 
-            cosine = items_indexes.select! {|index| rule.lhs.include?(index) }.size
+            cosine = items_indexes.select {|index| rule.lhs.include?(index) }.size
             if cosine > 0
                 cosine = cosine / (Math.sqrt(items_indexes.size) * 
                                    Math.sqrt(rule.lhs.size)).to_f
 
-                rhs = tuple(rule.rhs)
+                rhs = rule.rhs
                 if !predictions.include?(rhs)
                     predictions[rhs] = {"score" => 0}
                 end
 
-                predictions[rhs]["score"] += cosine * rule.fetch("score_by")
+                predictions[rhs]["score"] += cosine * rule.send(score_by)
+
+                unless predictions[rhs].key?("rules")
+                  predictions[rhs]["rules"] = []
+                end
+                predictions[rhs]["rules"] << rule.rule_id
             end
 
          end
@@ -244,6 +248,10 @@ module BigML
          final_predictions = []
          predictions.each do |rhs,prediction|
             prediction["item"] = @items[rhs[0]].to_json()
+            # adapting to association_set item format
+            ["description", "bin_start", "bin_end"].each do |item|
+               prediction["item"].delete(item)
+            end
             final_predictions << prediction
          end
 
@@ -293,13 +301,13 @@ module BigML
 
         items = []
         if !field.nil?
-            if @fields.include?(field)
+            if @fields.key?(field)
                 field_id = field
-            elsif @inverted_fields.include?(field)
+            elsif @inverted_fields.key?(field)
                 field_id = @inverted_fields[field]
-            else
-                raise Argumentrror "Failed to find a field name or ID
-                                    corresponding to %s." % field
+            else                   
+                raise Exception, "Failed to find a field name or ID
+                                     corresponding to %s." % field
             end
         end
 
@@ -315,15 +323,15 @@ module BigML
 
       end
 
-      def get_rules(min_leverage=nil, min_strength=nil,
+      def get_rules(min_leverage=nil, min_confidence=nil,
                   min_support=nil, min_p_value=nil, item_list=nil,
                   filter_function=nil)
 
         # Returns the rules array, previously selected by the leverage,
-        #   strength, support or a user-defined filter function (if set)
+        #   confidence, support or a user-defined filter function (if set)
 
         #   @param float min_leverage   Minum leverage value
-        #   @param float min_strength   Minum strength value
+        #   @param float min_confidence   Minum confidence value
         #   @param float min_support   Minum support value
         #   @param float min_p_value   Minum p_value value
         #   @param List item_list   List of Item objects. Any of them should be
@@ -339,12 +347,12 @@ module BigML
             return rule.leverage >= min_leverage
         end
 
-        def strength(rule,min_strength)
+        def confidence(rule,min_confidence)
             # Check minimum strength
-            if min_strength.nil?
+            if min_confidence.nil?
                 return true
             end
-            return rule.strength >= min_strength
+            return rule.confidence >= min_confidence
         end
 
         def support(rule, min_support)
@@ -352,7 +360,13 @@ module BigML
             if min_support.nil?
                 return true
             end
-            return rule.support >= min_support
+            # TODO
+            rule.support.each do |rhs_support|
+              if rhs_support >= min_support
+                return True
+              end  
+            end  
+            return False
         end
 
         def p_value(rule, min_p_value)
@@ -402,7 +416,7 @@ module BigML
 
         rules = []
         @rules.each do |rule|
-           if [leverage(rule, min_leverage), strength(rule, min_strength), 
+           if [leverage(rule, min_leverage), confidence(rule, min_confidence), 
                support(rule, min_support), p_value(rule, min_p_value),
                item_list_set(rule, item_list), 
                filter_function_set(rule, filter_function)].all?
@@ -430,7 +444,7 @@ module BigML
         rules = rules.collect{|rule| describe(rule.to_csv())}
 
         if file_name.nil?
-            raise ArgumentError "A valid file name is required to store the 
+            raise ArgumentError, "A valid file name is required to store the 
                                 rules."
         end
           

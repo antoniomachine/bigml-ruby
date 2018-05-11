@@ -5,7 +5,7 @@ require "test/unit"
 class TestFields < Test::Unit::TestCase
 
   def setup
-   @api = BigML::Api.new(nil, nil, true)
+   @api = BigML::Api.new
    @test_name=File.basename(__FILE__).gsub('.rb','')
    @api.delete_all_project_by_name(@test_name)
    @project = @api.create_project({'name' => @test_name})
@@ -80,6 +80,47 @@ class TestFields < Test::Unit::TestCase
       puts "Then I check that the file <%s> is like <%s>" % [summary_file, expected_file]
       assert_equal(true, File.open(summary_file, 'r').read() != File.open(expected_file, 'r').read()) 
 
+    end
+
+  end
+  
+  # Scenario: Successfully creating a Fields object and a modified fields structure from a file
+  def test_scenario3
+    data = [[File.dirname(__FILE__)+'/data/iris.csv', 0, File.dirname(__FILE__)+'/data/fields/fields_summary_modified.csv', "000000", "categorical"]]
+
+
+    puts
+    puts "Scenario: Successfully creating a Fields object and a modified fields structure from a file" 
+
+    data.each do |filename,objective_column,summary_file,field_id,optype|
+      puts
+      puts "Given I create a data source uploading a " + filename+ " file"
+      source = @api.create_source(filename, {'name'=> 'source_test', 'project'=> @project["resource"]})
+
+      puts "And I wait until the source is ready"
+      assert_equal(BigML::HTTP_CREATED, source["code"])
+      assert_equal(1, source["object"]["status"]["code"])
+      assert_equal(@api.ok(source), true)
+
+      puts "And I create dataset"
+      dataset=@api.create_dataset(source)
+
+      puts "And I wait until the dataset is ready"
+      assert_equal(BigML::HTTP_CREATED, dataset["code"])
+      assert_equal(1, dataset["object"]["status"]["code"])
+      assert_equal(@api.ok(dataset), true)
+
+      puts "And I create a Fields object from the dataset with objective column <%s>" % objective_column
+      fields = BigML::Fields.new(dataset, nil, nil, false, objective_column, true)
+      
+      puts "And I import a summary fields file '<summary_file>' as a fields structure" % summary_file
+      fields_struct = fields.new_fields_structure(summary_file)
+
+      puts "Then I check the new field structure has field '<field_id>' as '<optype>'" % [field_id, optype]
+      assert_equal(fields_struct['fields'].keys.include?(field_id), true)
+      assert_equal(fields_struct['fields'][field_id]["optype"], optype)
+          
+          
     end
 
   end

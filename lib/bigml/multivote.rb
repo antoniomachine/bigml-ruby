@@ -13,16 +13,22 @@
 # WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 # License for the specific language governing permissions and limitations
 # under the License.
+require_relative 'util'
+
 module BigML
 
  PLURALITY = 'plurality'
  CONFIDENCE = 'confidence weighted'
  PROBABILITY = 'probability weighted'
  THRESHOLD = 'threshold'
+ BOOSTING = 'boosting'
  PLURALITY_CODE = 0
  CONFIDENCE_CODE = 1
  PROBABILITY_CODE = 2
  THRESHOLD_CODE = 3
+ BOOSTING_CODE = -1
+ # COMBINATION = -2
+ # AGGREGATION = -3
 
  PREDICTION_HEADERS = ['prediction', 'confidence', 'order', 'distribution',
                       'count']
@@ -30,25 +36,62 @@ module BigML
     PLURALITY => nil,
     CONFIDENCE => 'confidence',
     PROBABILITY => 'probability',
-    THRESHOLD => nil}
+    THRESHOLD => nil,
+    BOOSTING => 'weight'}
  COMBINER_MAP = {
     PLURALITY_CODE => PLURALITY,
     CONFIDENCE_CODE => CONFIDENCE,
     PROBABILITY_CODE => PROBABILITY,
-    THRESHOLD_CODE => THRESHOLD}
-  WEIGHT_KEYS = {
+    THRESHOLD_CODE => THRESHOLD,
+    BOOSTING_CODE => BOOSTING}
+ WEIGHT_KEYS = {
     PLURALITY => nil,
     CONFIDENCE => ['confidence'],
     PROBABILITY => ['distribution', 'count'],
-    THRESHOLD => nil}
+    THRESHOLD => nil,
+    BOOSTING => ['weight']}
 
-  DEFAULT_METHOD = 0
-  BINS_LIMIT = 32
+ BOOSTING_CLASS = 'class'
+ CONFIDENCE_W = COMBINATION_WEIGHTS[CONFIDENCE]
 
-  NUMERICAL_COMBINATION_METHODS = {
+ DEFAULT_METHOD = 0
+ BINS_LIMIT = 32
+
+ NUMERICAL_COMBINATION_METHODS = {
     PLURALITY => "avg",
     CONFIDENCE => "error_weighted",
     PROBABILITY => "avg"}
+
+ 
+  def self.weighted_sum(predictions, weight=nil)
+   # Returns a weighted sum of the predictions
+     return predictions.collect {|prediction| prediction["prediction"] * prediction[weight] }.inject(0){|sum,x| sum + x }
+  end
+
+  def self.softmax(predictions)
+   # Returns the softmax values from a distribution given as a dictionary
+   # like:
+   #     {"category" => {"probability" => probability, "order" => order}}
+   total = 0.0
+   normalized = {}
+   predictions.each do |category, cat_info|
+      normalized[category] = {"probability" => Math.exp(cat_info["probability"]),
+                             "order" => cat_info["order"]}
+      total += normalized[category]["probability"]
+   end
+   
+   if total == 0
+      return Float::NAN
+   else
+     result = {}
+     normalized.each do |category, cat_info|
+       result[category] = {"probability" => cat_info["probability"] / total,
+                           "order" => cat_info["order"]}
+     end
+     
+     return result
+   end
+  end
 
   def self.ws_confidence(prediction, distribution, ws_z=1.96, ws_n=nil)
     # Wilson score interval computation of the distribution for the prediction
@@ -97,7 +140,7 @@ module BigML
     ws_sqrt = Math.sqrt((ws_p * (1 - ws_p) + ws_factor / 4) / ws_n)
    
   
-    result=(ws_p + ws_factor / 2 - ws_z * ws_sqrt) / (1 + ws_factor)
+    result=(ws_p + ws_factor / 2 - ws_z * ws_sqrt) / (1 + ws_factor).round(BigML::Util::PRECISION)
 
     return result
 
@@ -154,17 +197,20 @@ module BigML
      # A multiple vote prediction
      # Uses a number of predictions to generate a combined prediction.
      #
-     attr_accessor :predictions
-     def initialize(predictions)
+     attr_accessor :predictions, :boosting, :boosting_offsets
+     def initialize(predictions, boosting_offsets=nil)
        # Init method, builds a MultiVote with a list of predictions
 
        # The constuctor expects a list of well formed predictions like:
-       #    {'prediction' => 'Iris-setosa', 'confidence' => 0.7}
-       #    Each prediction can also contain an 'order' key that is used
-       #    to break even in votations. The list order is used by default.
-       #
-       @predictions = []
+       #      {'prediction' => 'Iris-setosa', 'confidence' => 0.7}
+       #  Each prediction can also contain an 'order' key that is used
+       #   to break even in votations. The list order is used by default.
+       #   The second argument will be true if the predictions belong to
+       #   boosting models.
 
+       @predictions = []
+       @boosting = !boosting_offsets.nil?
+       @boosting_offsets = boosting_offsets
        if predictions.is_a?(Array)
           @predictions.concat(predictions)
        else
@@ -179,15 +225,15 @@ module BigML
 
      end
 
-     def grouped_distribution(cls, instance)
+     def self.grouped_distribution(instance)
         # Returns a distribution formed by grouping the distributions of
         # each predicted node.
 
         joined_distribution = {}
         distribution_unit = 'counts'
-       
-        instance["predictions"].each do |prediction|
-           joined_distribution=merge_distributions(joined_distribution, 
+        distribution=[]
+        instance.predictions.each do |prediction|
+           joined_distribution=BigML::merge_distributions(joined_distribution, 
                                                    { prediction['distribution'][0][0] => 
                                                      prediction['distribution'][0][1] })
            # when there's more instances, sort elements by their mean
@@ -195,19 +241,16 @@ module BigML
            if distribution_unit == 'counts'
               distribution_unit = distribution.size > BINS_LIMIT ? 'bins' : 'counts'
            end
-           distribution = merge_bins(distribution, BINS_LIMIT)
+           distribution = BigML::merge_bins(distribution, BINS_LIMIT)
         end
 
         return {'distribution' => distribution,
                 'distribution_unit' => distribution_unit}
      end
 
-     def self.avg(instance, with_confidence=false,
-                  add_confidence=false, add_distribution=false,
-                  add_count=false, add_median=false, add_min=false, add_max=false)
-
-        if !instance.predictions.empty? and with_confidence and 
-            !instance.predictions.collect{|prediction| prediction.key?("confidence")}.all? 
+     def self.avg(instance, full=false)
+        if !instance.predictions.empty? and full and 
+            !instance.predictions.collect{|prediction| prediction.key?(CONFIDENCE_W)}.all? 
             raise Exception, "Not enough data to use the selected prediction method. Try creating your model anew."
         end
         total = instance.predictions.size
@@ -215,71 +258,62 @@ module BigML
         median_result = 0.0
         confidence = 0.0
         instances = 0
+        missing_confidence = 0
         d_min = Float::INFINITY 
-        d_max = Float::INFINITY
+        d_max = -Float::INFINITY
 
         instance.predictions.each do |prediction|
             result += prediction['prediction']
-            if add_median
+            if full
+              if prediction.key?("median")
                 median_result += prediction['median']
-            end
-            if with_confidence or add_confidence
-                confidence += prediction['confidence']
-            end
-            if add_count
-                instances += prediction['count']
-            end
-            if add_min and d_min > prediction['min']
+              end 
+              
+              if !prediction[CONFIDENCE_W].nil? and 
+                  prediction[CONFIDENCE_W] > 0
+                 confidence += prediction[CONFIDENCE_W]
+              else
+                missing_confidence += 1
+              end
+              
+              instances += prediction['count']  
+              
+              if prediction.key?("min") and prediction['min'] < d_min
                 d_min = prediction['min']
-            end
-            if add_max and d_max < prediction['max']
+              end
+              
+              if prediction.key?("max") and prediction['max'] > d_max
                 d_max = prediction['max']
-            end
+              end
+                 
+            end  
         end
-
-        if with_confidence
-            return total > 0 ? [result / total, confidence / total] : [ Float::INFINITY , 0]
-        end
-
-        if (add_confidence or add_distribution or add_count or
-                add_median or add_min or add_max)
-
-            output = {'prediction' => total > 0 ? result / total :  Float::INFINITY} 
-            if add_confidence
-                 output['confidence'] = total > 0 ?  confidence / total : 0
-            end
-
-            if add_distribution
-                output.merge!(cls.grouped_distribution(instance))
-            end
-
-            if add_count
-                output['count'] = instances
-            end
-
-            if add_median
-                output['median'] = total > 0 ?  median_result / total : Float::INFINITY
-            end
-
-            if add_min
-                output['min'] = d_min
-            end
-
-            if add_max
-                output['max'] = d_max
-            end
-
-            return output
-        end
-
+        
+        if full
+          output = {'prediction' => total > 0 ? result/total :  Float::INFINITY} 
+          # some strange models have no confidence
+          output['confidence'] = total > 0 ?  (confidence /(total-missing_confidence)).round(BigML::Util::PRECISION) : 0
+          output.merge!(grouped_distribution(instance))
+          output['count'] = instances
+          if median_result > 0
+            output['median'] = total > 0 ? median_result/total : Float::NAN
+          end
+          if d_min < Float::INFINITY 
+             output['min'] = d_min
+          end
+          
+          if d_max > -Float::INFINITY 
+             output['max'] = d_max
+          end
+          
+          return output     
+        end  
+        
         return total > 0 ?  result / total : Float::INFINITY
  
      end
 
-     def self.error_weighted(instance, with_confidence=false,
-                       add_confidence=false, add_distribution=false,
-                       add_count=false, add_median=false, add_min=false,
-                       add_max=false)
+     def self.error_weighted(instance, full=false)
         #  Returns the prediction combining votes using error to compute weight
 
         #   If with_confidences is true, the combined confidence (as the
@@ -287,8 +321,8 @@ module BigML
         #   predictions) is also returned
         # 
 
-        if !instance.predictions.empty? and with_confidence and !instance.predictions.collect{|prediction| prediction.key?('confidence')}.all? 
-            raise Exception "Not enough data to use the selected prediction method. Try creating your model anew."
+        if !instance.predictions.empty? and full and !instance.predictions.collect{|prediction| prediction.key?(CONFIDENCE_W)}.all? 
+            raise Exception, "Not enough data to use the selected prediction method. Try creating your model anew."
         end
 
         top_range = 10
@@ -296,7 +330,7 @@ module BigML
         median_result = 0.0
         instances = 0
         d_min = Float::INFINITY
-        d_max = Float::INFINITY
+        d_max = -Float::INFINITY
  
         normalization_factor = MultiVote.normalize_error(instance, top_range)
         if normalization_factor == 0
@@ -307,86 +341,80 @@ module BigML
             end
         end
 
-        if with_confidence or add_confidence
-            combined_error = 0.0
-        end
+        if full
+          combined_error = 0.0 
+        end  
+      
 
         instance.predictions.each do |prediction|
-            result += prediction['prediction'] * prediction['_error_weight']
-            if add_median
-                median_result += (prediction['median'] *
-                                  prediction['_error_weight'])
+          result += prediction['prediction'] * prediction['_error_weight']
+          if full
+            
+            if prediction.key?("median")
+              median_result += (prediction['median'] *
+                                prediction['_error_weight'])
             end
-
-            if add_count
-                instances += prediction['count']
-            end
-
-            if add_min and d_min > prediction['min']
-                d_min = prediction['min']
-            end
-
-            if add_max and d_max < prediction['max']
-                d_max = prediction['max']
-            end
-
-            if with_confidence or add_confidence
-                combined_error += (prediction['confidence'] *
+          
+            instances += prediction['count']
+            
+            if prediction.key?("min") && prediction['min'] < d_min
+              d_min = prediction['min']
+            end 
+            
+            if prediction.key?("max") && prediction['max'] > d_max
+              d_max = prediction['max']
+            end  
+            
+            # some buggy models don't produce a valid confidence value
+            if !prediction[CONFIDENCE_W].nil?
+                combined_error += (prediction[CONFIDENCE_W] *
                                    prediction['_error_weight'])
             end
-
+            
             prediction.delete('_error_weight')
+            
+          end    
         end
-
-        if with_confidence
-            return [result / normalization_factor,
-                    combined_error / normalization_factor]
-        end
-
-        if (add_confidence or add_distribution or add_count or
-                add_median or add_min or add_max)
-            output = {'prediction' => result / normalization_factor}
-            if add_confidence
-                output['confidence'] =  combined_error / normalization_factor
-            end
-
-            if add_distribution
-                output.merge!(cls.grouped_distribution(instance))
-            end
-
-            if add_count
-                output['count'] = instances
-            end
-
-            if add_median
-                output['median'] = median_result / normalization_factor
-            end
-
-            if add_min
-                output['min'] = d_min
-            end
-
-            if add_max
-                output['max'] = d_max
-            end
-
-            return output
-        end
-
+        
+        if full
+          output = {'prediction' => result / normalization_factor}
+          output['confidence'] =  (combined_error / normalization_factor).round(BigML::Util::PRECISION)
+          output.merge!(grouped_distribution(instance))
+          output['count'] = instances
+          
+          if median_result > 0
+            output['median'] = median_result / normalization_factor
+          end  
+          
+          if d_min < Float::INFINITY
+             output['min'] = d_min
+          end
+          
+          if d_max < -Float::INFINITY
+             output['max'] = d_max
+          end
+          
+          return output  
+        end  
+        
         return result / normalization_factor
-
+        
      end
 
      def self.normalize_error(instance, top_range)
         # Normalizes error to a [0, top_range] and builds probabilities
 
         if !instance.predictions.empty? and
-             !instance.predictions..collect {|prediction| prediction.key?('confidence') }.all?
+             !instance.predictions..collect {|prediction| prediction.key?(CONFIDENCE_W) }.all?
             raise Exception , "Not enough data to use the selected prediction method. Try creating your model anew."
         end
-
-        error_values = instance.predictions.collect {|prediction| prediction['confidence']}
-
+        error_values=[]
+        instance.predictions.each do |prediction|
+          unless prediction[CONFIDENCE_W].nil? 
+            error_values.append(prediction[CONFIDENCE_W])
+          end  
+        end 
+        
         max_error = error_values.max
         min_error = error_values.min
         error_range = 1.0 * (max_error - min_error)
@@ -396,7 +424,7 @@ module BigML
             # Then builds e^-[scaled error] and returns the normalization
             # factor to fit them between [0, 1]
             instance.predictions.each do |prediction|
-                delta = (min_error - prediction['confidence'])
+                delta = (min_error - prediction[CONFIDENCE_W])
                 prediction['_error_weight'] = Math.exp(delta / error_range *
                                                        top_range)
                 normalize_factor += prediction['_error_weight']
@@ -405,7 +433,7 @@ module BigML
             instance.predictions.each do |prediction|
                 prediction['_error_weight'] = 1
             end
-            normalize_factor = instance.predictions.size
+            normalize_factor = error_values.size
         end
         return normalize_factor
 
@@ -413,7 +441,12 @@ module BigML
 
      def is_regression()
         # Returns True if all the predictions are numbers
-	return @predictions.collect{|prediction| prediction["prediction"].is_a?(Numeric) }.all?
+
+        if !@boosting.nil? && @boosting
+           return @predictions.collect{|prediction| prediction.fetch("class", nil).nil? }.any?
+        end
+
+        return @predictions.collect{|prediction| prediction["prediction"].is_a?(Numeric) }.all?
      end
 
      def next_order()
@@ -430,10 +463,7 @@ module BigML
         return 0
      end
 
-     def combine(method=DEFAULT_METHOD, with_confidence=false,
-                add_confidence=false, add_distribution=false,
-                add_count=false, add_median=false, add_min=false,
-                add_max=false, options=nil)
+     def combine(method=DEFAULT_METHOD, options=nil, full=false)
         #  "Reduces a number of predictions voting for classification and
         #   averaging predictions for regression.
 
@@ -445,7 +475,7 @@ module BigML
         # 
         # there must be at least one prediction to be combined
         if @predictions.empty?
-            raise Exception "No predictions to be combined."
+            raise Exception, "No predictions to be combined."
         end
 
         method = COMBINER_MAP.fetch(method, COMBINER_MAP[DEFAULT_METHOD])
@@ -459,20 +489,30 @@ module BigML
                end
             end
         end
-
-        if is_regression()
+        
+        if !@boosting.nil? and @boosting
             @predictions.each do |prediction|
-              if prediction['confidence'].nil?
-                 prediction['confidence'] = 0
+              if prediction[COMBINATION_WEIGHTS[BOOSTING]].nil?
+                 prediction[COMBINATION_WEIGHTS[BOOSTING]] = 0
+              end
+            end
+
+            if is_regression()
+               # sum all gradients weighted by their "weight"
+               return BigML::weighted_sum(@predictions, "weight")+self.boosting_offsets
+            else
+               return classification_boosting_combiner(options, full)
+            end
+
+        elsif is_regression()
+            @predictions.each do |prediction|
+              if prediction[CONFIDENCE_W].nil?
+                 prediction[CONFIDENCE_W] = 0
               end
             end
 
             function = MultiVote.method(NUMERICAL_COMBINATION_METHODS.fetch(method, "avg"))
-
-            return function.call(self, with_confidence, add_confidence, add_distribution,
-                                    add_count, add_median, add_min, add_max) 
-
-
+            return function.call(self, full)
         else
             if method == THRESHOLD
                 if options.nil?
@@ -488,10 +528,7 @@ module BigML
 
             return predictions.combine_categorical(
                 COMBINATION_WEIGHTS.fetch(method, nil),
-                with_confidence,
-                add_confidence,
-                add_distribution,
-                add_count)
+                full)
         end
 
      end
@@ -511,8 +548,9 @@ module BigML
                                 of instances in a node" % [total]
            end
            order = prediction['order']
-           prediction['distribution'].each do |prediction, instances|
-             predictions << {'prediction' => prediction, 'probability' => instances.to_f/total,
+           prediction['distribution'].each do |prediction,instances|
+             predictions << {'prediction' => prediction, 
+                             'probability' => (instances.to_f/total).round(BigML::Util::PRECISION),
                              'count' => instances, 'order' =>  order}
            end
 
@@ -551,9 +589,7 @@ module BigML
         return [distribution, total] 
      end
 
-     def combine_categorical(weight_label=nil, with_confidence=false,
-                             add_confidence=false, add_distribution=false,
-                             add_count=false)
+     def combine_categorical(weight_label=nil, full=false)
         # Returns the prediction combining votes by using the given weight:
 
         #    weight_label can be set as:
@@ -583,7 +619,7 @@ module BigML
                end
             end
             category = prediction['prediction']
-            if add_count
+            if full
                instances += prediction['count']
             end
             if mode.include?(category)
@@ -596,46 +632,42 @@ module BigML
         end
 
         prediction = mode.sort_by {|key, x| [x["count"], -x["order"], key]}.collect {|key,value|
-									[key, value]}.reverse[0][0]
-
-        if with_confidence or add_confidence
-            if @predictions[0].include?('confidence')
-                data = weighted_confidence(prediction, weight_label)
-                prediction = data[0]
-                combined_confidence = data[1] 
-            # if prediction had no confidence, compute it from distribution
-            else
-                combined_distribution = combine_distribution()
-                distribution = combined_distribution[0]
-                count = combined_distribution[1]
-                combined_confidence = BigML::ws_confidence(prediction, distribution, 1.96,
-                                                    count)
-            end
+                     [key, value]}.reverse[0][0]
+        
+        if full
+          output = {'prediction' => prediction}
+          if self.predictions[0].key?("confidence")
+            data = weighted_confidence(prediction, weight_label)
+            prediction = data[0]
+            combined_confidence = data[1] 
+          else
+            if self.predictions[0].key?("probability")
+              combined_distribution = combine_distribution()
+              distribution = combined_distribution[0]
+              count = combined_distribution[1]
+              combined_confidence = BigML::ws_confidence(prediction, distribution, 1.96 , count)
+            end  
+          end 
+          output['confidence']=combined_confidence.round(BigML::Util::PRECISION)
+          
+          if self.predictions[0].key?("probability")
+            self.predictions.each do|prediction|
+              if prediction['prediction'] == output['prediction']
+                output['probability'] = prediction['probability']
+              end  
+            end   
+          end 
+          
+          if self.predictions[0].key?("distribution")
+            grouped_dis = self.class.grouped_distribution(self)
+            output["distribution"] = grouped_dis["distribution"]
+            output["distribution_unit"] = grouped_dis["distribution_unit"]
+          end 
+          
+          output['count'] = instances  
+          return output 
         end
         
-        if with_confidence
-            return prediction, combined_confidence
-        end
-
-        if add_confidence or add_distribution or add_count
-            output = {'prediction' => prediction}
-            if add_confidence
-                output['confidence']=combined_confidence
-            end
-
-            if add_distribution
-               grouped_dis =  self.grouped_distribution(self)
-               output["distribution"] = grouped_dis["distribution"]
-               output["distribution_unit"] = grouped_dis["distribution_unit"]
-            end
-
-            if add_count
-                output['count'] = instances
-            end
-
-            return output
-        end
-
         return prediction
 
      end
@@ -651,7 +683,7 @@ module BigML
         end    
 
         if (!weight_label.nil? and (!weight_label.is_a?(String) or 
-                                    predictions.any?{|prediction| !prediction.include?("confidence") or 
+                                    predictions.any?{|prediction| !prediction.include?(CONFIDENCE_W) or 
                                                                   !prediction.include?(weight_label)  }  ))
 
            raise ArgumentError, "Not enough data to use the selected prediction method. Lacks %s information." % [weight_label]
@@ -665,13 +697,58 @@ module BigML
            if !weight_label.nil?
               weight = prediction[weight_label]
            end
-           final_confidence += weight * prediction['confidence']
+           final_confidence += weight * prediction[CONFIDENCE_W]
            total_weight += weight
         end
 
         final_confidence = total_weight > 0 ? final_confidence / total_weight : Float::INFINITY 
         return [combined_prediction, final_confidence]
         
+     end
+
+     def classification_boosting_combiner(options,
+                                         full=false)
+        # Combines the predictions for a boosted classification ensemble
+        # Applies the regression boosting combiner, but per class. Tie breaks
+        # use the order of the categories in the ensemble summary to decide.
+        grouped_predictions = {}
+        @predictions.each do |prediction|
+          if !prediction.fetch(BOOSTING_CLASS, nil).nil?
+             objective_class = prediction.fetch(BOOSTING_CLASS)
+             if grouped_predictions.fetch(objective_class, nil).nil?
+                grouped_predictions[objective_class] = []
+             end
+             grouped_predictions[objective_class] << prediction
+          end
+        end
+        
+
+        categories = options.fetch("categories", [])
+        predictions = {} 
+        grouped_predictions.each {|key,value|
+           predictions[key] = {"probability" => BigML::weighted_sum(value, "weight"),
+                               "order" => categories.index(key)}
+        } 
+        
+        grouped_predictions.each {|key,value|
+          predictions[key] = {"probability" => BigML::weighted_sum(value, "weight") + 
+                                               @boosting_offsets.fetch(key, 0),
+                              "order" => categories.index(key)}
+        } 
+
+        predictions = BigML::softmax(predictions)
+        predictions = predictions.sort_by {|i,x| [-x["probability"],x["order"]] } 
+        prediction, prediction_info = predictions[0]
+        confidence = prediction_info["probability"].round(BigML::Util::PRECISION)
+        
+        if full
+          return {"prediction" => prediction,
+                  "probability" => confidence, 
+                  "probabilities" => predictions.collect{|prediction, prediction_info| {"category" => prediction, "probability" =>  prediction_info["probability"].round(BigML::Util::PRECISION)} } }
+                                        
+        else
+          return prediction
+        end  
      end
 
      def append(prediction_info)
@@ -690,12 +767,14 @@ module BigML
         #   - count: the total number of instances of the training set in the
         #            node
         #
-        if prediction_info.is_a?(Hash) and prediction_info.include?('prediction')
-           order = next_order()
-           prediction_info['order'] = order
-           @predictions << prediction_info
-        else
-          puts "Failed to add the prediction.\n The minimal key for the prediction is 'prediction' :\n{'prediction': 'Iris-virginica'"
+        if prediction_info.is_a?(Hash)
+           if prediction_info.include?('prediction')
+             order = next_order()
+             prediction_info['order'] = order
+             @predictions << prediction_info
+           else
+             warn("Failed to add the prediction.\n The minimal key for the prediction is 'prediction' :\n{'prediction': 'Iris-virginica'")
+           end
         end 
 
      end
@@ -764,7 +843,6 @@ module BigML
         #   - 'count': the total number of instances of the training set in the
         #              node
         #
-
         if (prediction_row.is_a?(Array) and
                 prediction_headers.is_a?(Array) and
                 prediction_row.size == prediction_headers.size and

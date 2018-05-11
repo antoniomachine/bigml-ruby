@@ -16,7 +16,8 @@ class TestEnsemblePredicction < Test::Unit::TestCase
 
   # Scenario: Successfully creating a prediction from an ensemble
   def test_scenario1
-    data = [{"filename" => File.dirname(__FILE__)+'/data/iris.csv',
+    data = [
+         {"filename" => File.dirname(__FILE__)+'/data/iris.csv',
              "number_of_models" => 5,
              "tlp" => 1,
              "data_input" => {"petal width" => 0.5},
@@ -33,13 +34,13 @@ class TestEnsemblePredicction < Test::Unit::TestCase
              "tlp" => 1,
              "data_input" => {"Assignment" => 81.22,  "Tutorial"=> 91.95, "Midterm"=> 79.38, "TakeHome"=> 105.93},
              "objective" => "000005",
-             "prediction" => 88.205575},
+             "prediction" => 84.556},
             {"filename" => File.dirname(__FILE__)+'/data/grades.csv',
              "number_of_models" => 10,
              "tlp" => 1,
              "data_input" => {"Assignment" => 97.33,  "Tutorial"=> 106.74, "Midterm"=> 76.88, "TakeHome"=> 108.89},
              "objective" => "000005",
-             "prediction" => 84.29401}
+             "prediction" => 73.13558}
            ]
 
     puts
@@ -63,13 +64,17 @@ class TestEnsemblePredicction < Test::Unit::TestCase
        assert_equal(@api.ok(dataset), true)
 
        puts "And I create an ensemble of #{item['number_of_models']} models and #{item['tlp']} tlp"
-       ensemble = @api.create_ensemble(dataset, {"number_of_models"=> item["number_of_models"], "tlp"=> item["tlp"], "seed" => 'BigML', 'sample_rate'=> 0.70})
-    
+       ensemble = @api.create_ensemble(dataset, {"number_of_models"=> item["number_of_models"], 
+                                                 "seed" => 'BigML', 
+                                                 'ensemble_sample'=>{'rate' => 0.7, 
+                                                                     'seed' => 'BigML'}, 
+                                                 'missing_splits' => false})
+        
        puts "And I wait until the ensemble is ready"
        assert_equal(BigML::HTTP_CREATED, ensemble["code"])
        assert_equal(@api.ok(ensemble), true)
 
-       puts "When I create an ensemble prediction for #{item['data_input']}" 
+       puts "When I create an ensemble prediction for #{item['data_input']}"
        prediction = @api.create_prediction(ensemble, item["data_input"])
 
        puts "And I wait until the prediction is ready"
@@ -78,7 +83,7 @@ class TestEnsemblePredicction < Test::Unit::TestCase
 
        puts "Then the prediction for #{item['objective']} is #{item['prediction']}"
        assert_equal(item["prediction"], prediction["object"]["prediction"][item["objective"]].is_a?(Float) ? 
-						('%.6f' % prediction["object"]["prediction"][item["objective"]]).to_f : 
+						('%.5f' % prediction["object"]["prediction"][item["objective"]]).to_f : 
 						prediction["object"]["prediction"][item["objective"]])
 
     end

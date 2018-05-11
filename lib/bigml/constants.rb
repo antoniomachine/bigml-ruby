@@ -38,7 +38,13 @@ module BigML
   LOGISTIC_REGRESSION_PATH = 'logisticregression'
   ASSOCIATION_PATH = 'association'
   ASSOCIATION_SET_PATH = 'associationset'
-  LDA_PATH = 'lda'
+  CONFIGURATION_PATH = 'configuration'
+  TOPIC_MODEL_PATH = 'topicmodel'
+  TOPIC_DISTRIBUTION_PATH = 'topicdistribution'
+  BATCH_TOPIC_DISTRIBUTION_PATH = 'batchtopicdistribution'
+  TIME_SERIES_PATH = 'timeseries'
+  FORECAST_PATH = 'forecast'
+  DEEPNET_PATH = 'deepnet'
   SCRIPT_PATH = 'script'
   EXECUTION_PATH = 'execution'
   LIBRARY_PATH = 'library'
@@ -67,7 +73,13 @@ module BigML
   LOGISTIC_REGRESSION_RE = /^#{LOGISTIC_REGRESSION_PATH}\/#{ID_PATTERN}$|^shared\/#{LOGISTIC_REGRESSION_PATH}\/#{SHARED_PATTERN}$/ 
   ASSOCIATION_RE = /^#{ASSOCIATION_PATH}\/#{ID_PATTERN}$|^shared\/#{ASSOCIATION_PATH}\/#{SHARED_PATTERN}$/
   ASSOCIATION_SET_RE = /^#{ASSOCIATION_SET_PATH}\/#{ID_PATTERN}$/
-  LDA_RE = /^(public\/)?#{LDA_PATH}\/#{ID_PATTERN}$|^shared\/#{LDA_PATH}\/#{SHARED_PATTERN}$/
+  CONFIGURATION_RE = /^#{CONFIGURATION_PATH}\/#{ID_PATTERN}$/
+  TOPIC_MODEL_RE = /^(public\/)?#{TOPIC_MODEL_PATH}\/#{ID_PATTERN}$|^shared\/#{TOPIC_MODEL_PATH}\/#{SHARED_PATTERN}$/
+  TOPIC_DISTRIBUTION_RE =  /^(public\/)?#{TOPIC_DISTRIBUTION_PATH}\/#{ID_PATTERN}$|^shared\/#{TOPIC_DISTRIBUTION_PATH}\/#{SHARED_PATTERN}$/
+  BATCH_TOPIC_DISTRIBUTION_RE = /^(public\/)?#{BATCH_TOPIC_DISTRIBUTION_PATH}\/#{ID_PATTERN}$|^shared\/#{BATCH_TOPIC_DISTRIBUTION_PATH}\/#{SHARED_PATTERN}$/
+  TIME_SERIES_RE = /^(#{TIME_SERIES_PATH}\/#{ID_PATTERN})|^(shared\/#{TIME_SERIES_PATH}\/#{SHARED_PATTERN}$)/
+  FORECAST_RE = /^#{FORECAST_PATH}\/#{ID_PATTERN}$/
+  DEEPNET_RE = /^#{DEEPNET_PATH}\/#{ID_PATTERN}$|^shared\/#{DEEPNET_PATH}\/#{SHARED_PATTERN}$/
   SCRIPT_RE = /^#{SCRIPT_PATH}\/#{ID_PATTERN}$|^shared\/#{SCRIPT_PATH}\/#{SHARED_PATTERN}$/
   EXECUTION_RE = /^#{EXECUTION_PATH}\/#{ID_PATTERN}$|^shared\/#{EXECUTION_PATH}\/#{SHARED_PATTERN}$/ 
   LIBRARY_RE = /^#{LIBRARY_PATH}\/#{ID_PATTERN}$|^shared\/#{LIBRARY_PATH}\/#{SHARED_PATTERN}$/
@@ -93,7 +105,13 @@ module BigML
     LOGISTIC_REGRESSION_PATH => LOGISTIC_REGRESSION_RE,
     ASSOCIATION_PATH => ASSOCIATION_RE,
     ASSOCIATION_SET_PATH => ASSOCIATION_SET_RE,
-    LDA_PATH => LDA_RE,
+    CONFIGURATION_PATH=> CONFIGURATION_RE,
+    TOPIC_MODEL_PATH => TOPIC_MODEL_RE,
+    TOPIC_DISTRIBUTION_PATH => TOPIC_DISTRIBUTION_RE,
+    BATCH_TOPIC_DISTRIBUTION_PATH => BATCH_TOPIC_DISTRIBUTION_RE,
+    TIME_SERIES_PATH => TIME_SERIES_RE,
+    FORECAST_PATH => FORECAST_RE,
+    DEEPNET_PATH => DEEPNET_RE,
     SCRIPT_PATH => SCRIPT_RE,
     EXECUTION_PATH => EXECUTION_RE,
     LIBRARY_PATH => LIBRARY_RE}
@@ -105,7 +123,26 @@ module BigML
     BATCH_ANOMALY_SCORE_PATH => 'batch_anomaly_score',
     STATISTICAL_TEST_PATH => 'statistical_test',
     LOGISTIC_REGRESSION_PATH => 'logistic_regression',
-    ASSOCIATION_SET_PATH => 'association_set'
+    ASSOCIATION_SET_PATH => 'association_set',
+    TOPIC_MODEL_PATH => 'topic_model',
+    TOPIC_DISTRIBUTION_PATH => 'topic_distribution',
+    BATCH_TOPIC_DISTRIBUTION_PATH => 'batch_topic_distribution',
+    TIME_SERIES_PATH => 'time_series'
+  }
+
+  IRREGULAR_PLURALS = {
+    ANOMALY_PATH => 'anomalies',
+    BATCH_PREDICTION_PATH => 'batch_predictions',
+    BATCH_CENTROID_PATH => 'batch_centroids',
+    ANOMALY_SCORE_PATH => 'anomaly_scores',
+    BATCH_ANOMALY_SCORE_PATH => 'batch_anomaly_scores',
+    STATISTICAL_TEST_PATH => 'statistical_tests',
+    LOGISTIC_REGRESSION_PATH => 'logistic_regressions',
+    ASSOCIATION_SET_PATH => 'association_sets',
+    TOPIC_MODEL_PATH => 'topic_models',
+    TOPIC_DISTRIBUTION_PATH => 'topic_distributions',
+    TIME_SERIES_PATH => 'time_series',
+    LIBRARY_PATH => 'libraries'
   }
 
   # Resource status codes
@@ -122,7 +159,9 @@ module BigML
 
   # Minimum query string to get model fields
   TINY_RESOURCE = "full=false"
-
+  COMPOSED_RESOURCES = ["ensemble"]
+  LIST_LAST = "limit=1;full=yes;tags=%s"
+  
   NO_QS = [EVALUATION_RE, PREDICTION_RE, BATCH_PREDICTION_RE,
            CENTROID_RE, BATCH_CENTROID_RE, ANOMALY_SCORE_RE,
 	   BATCH_ANOMALY_SCORE_RE, PROJECT_RE, ASSOCIATION_SET_RE]

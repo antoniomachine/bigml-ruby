@@ -27,8 +27,8 @@ module BigML
                    :prediction_protocol, :verify, :verify_prediction
 
 
-     def initialize(domain: nil, prediction_domain: nil, prediction_protocol: nil, 
-                    protocol: nil, verify: nil, prediction_verify: nil)
+     def initialize(domain=nil, prediction_domain=nil, prediction_protocol=nil, 
+                    protocol=nil, verify=nil, prediction_verify=nil)
 
        # Base domain for remote resources
        @general_domain = domain.nil? ? BIGML_DOMAIN : domain

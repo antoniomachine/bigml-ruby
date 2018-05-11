@@ -6,7 +6,7 @@ require "test/unit"
 class TestLocalModelOutputs < Test::Unit::TestCase
 
   def setup
-   @api = BigML::Api.new(nil, nil, true)
+   @api = BigML::Api.new
    @test_name=File.basename(__FILE__).gsub('.rb','')
    @api.delete_all_project_by_name(@test_name)
    @project = @api.create_project({'name' => @test_name})
@@ -66,7 +66,11 @@ class TestLocalModelOutputs < Test::Unit::TestCase
       local_model.rules(File.open(tmp_file_name, 'w'))
 
       puts "Then I check the output is like %s expected file" % expected_file
-      assert_equal(true, FileUtils.compare_file(tmp_file_name, File.dirname(__FILE__)+"/"+expected_file))
+      #assert_equal(true, FileUtils.compare_file(tmp_file_name, File.dirname(__FILE__)+"/"+expected_file))
+      
+      f1 = IO.readlines(tmp_file_name).map(&:strip)
+      f2 = IO.readlines(File.dirname(__FILE__)+"/"+expected_file).map(&:strip)
+      assert_equal(f1, f2)
 
     end
 
@@ -168,7 +172,11 @@ class TestLocalModelOutputs < Test::Unit::TestCase
       local_model.rules(File.open(tmp_file_name, 'w'))
 
       puts "Then I check the output is like %s expected file" % expected_file
-      assert_equal(true, FileUtils.compare_file(tmp_file_name, File.dirname(__FILE__)+"/"+expected_file))
+      #assert_equal(true, FileUtils.compare_file(tmp_file_name, File.dirname(__FILE__)+"/"+expected_file))
+      
+      f1 = IO.readlines(tmp_file_name).map(&:strip)
+      f2 = IO.readlines(File.dirname(__FILE__)+"/"+expected_file).map(&:strip)
+      assert_equal(f1, f2)
 
     end
 
@@ -216,12 +224,13 @@ class TestLocalModelOutputs < Test::Unit::TestCase
       puts "And I create a local model"
       local_model = BigML::Model.new(model, @api)
 
-      file_distribution = File.open(File.dirname(__FILE__)+"/"+expected_file).read()
       puts "And I translate the tree into IF_THEN rules"
       distribution = local_model.get_data_distribution()
 
-      distribution_str = distribution.collect {|value| "[%s,%s]\n" % [value[0], value[1]] }.join('') 
+      distribution_str = distribution.collect {|value| "[%s,%s]\n" % [value[0], value[1]] }.map(&:strip) 
 
+      file_distribution = IO.readlines(File.dirname(__FILE__)+"/"+expected_file).map(&:strip)
+      
       puts"Then I check the output is like %s expected file" % expected_file
       assert_equal(distribution_str, file_distribution)
 
@@ -270,11 +279,11 @@ class TestLocalModelOutputs < Test::Unit::TestCase
       puts "And I create a local model"
       local_model = BigML::Model.new(model, @api)
 
-      file_distribution = File.open(File.dirname(__FILE__)+"/"+expected_file).read()
       puts "And I translate the tree into IF_THEN rules"
       distribution = local_model.get_prediction_distribution()
 
-      distribution_str = distribution.collect {|value| "[%s,%s]\n" % [value[0], value[1]] }.join('') 
+      distribution_str = distribution.collect {|value| "[%s,%s]\n" % [value[0], value[1]] }.map(&:strip) 
+      file_distribution = IO.readlines(File.dirname(__FILE__)+"/"+expected_file).map(&:strip)
 
       puts "Then I check the predictions distribution with <%s> file" % expected_file
       assert_equal(distribution_str, file_distribution)
@@ -329,7 +338,10 @@ class TestLocalModelOutputs < Test::Unit::TestCase
       local_model.summarize(File.open(tmp_file_name, 'w'))
 
       puts "Then I check the model summary with %s file" % expected_file
-      assert_equal(true, File.open(tmp_file_name, 'r').read() != File.open(File.dirname(__FILE__)+"/"+expected_file, 'r').read())
+      
+      f1 = IO.readlines(tmp_file_name).map(&:strip)
+      f2 = IO.readlines(File.dirname(__FILE__)+"/"+expected_file).map(&:strip)
+      assert_equal(f1, f2)
 
     end
 

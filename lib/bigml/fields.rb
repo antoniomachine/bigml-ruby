@@ -16,6 +16,8 @@
 
 require_relative 'constants'
 require_relative 'resourcehandler'
+require_relative 'util'
+require 'CSV'
 
 module BigML
 
@@ -26,7 +28,7 @@ module BigML
   RESOURCES_WITH_FIELDS = [SOURCE_PATH, DATASET_PATH, MODEL_PATH,
                            PREDICTION_PATH, CLUSTER_PATH, ANOMALY_PATH,
                            SAMPLE_PATH, CORRELATION_PATH, STATISTICAL_TEST_PATH,
-                           LOGISTIC_REGRESSION_PATH, ASSOCIATION_PATH]
+                           LOGISTIC_REGRESSION_PATH, ASSOCIATION_PATH, TOPIC_MODEL_PATH]
 
   DEFAULT_MISSING_TOKENS = ["", "N/A", "n/a", "NULL", "null", "-", "#DIV/0",
                             "#REF!", "#NAME?", "NIL", "nil", "NA", "na",
@@ -78,6 +80,8 @@ module BigML
           fields = resource['logistic_regression']['fields']
       elsif resource_type == ASSOCIATION_PATH
           fields = resource['associations']['fields']
+      elsif resource_type == TOPIC_MODEL_PATH
+          fields = resource['topic_model']['fields']
       elsif resource_type == SAMPLE_PATH
           fields = {}
           resource['sample']['fields'].each do |field| 
@@ -178,22 +182,6 @@ module BigML
 
   end
 
-  def self.find_locale(data_locale="UTF-8", verbose=false)
-     begin
-       encoding = Encoding.find(data_locale)
-       if encoding.nil? and !encoding.index(".").nil?
-          encoding = Encoding.find(data_locale.split(".")[-1])
-          if encoding.nil?
-             encoding = Encoding.find("UTF-8")
-          end
-          Encoding.default_external = encoding
-       end
-     rescue Exception
-       puts "Error find Locale"
-     end
- 
-  end
-
   class Fields 
      # A class to deal with BigML auto-generated ids.
      attr_accessor :objective_field
@@ -249,7 +237,7 @@ module BigML
 
        @fields_by_name = BigML::invert_dictionary(@fields, 'name')
        @fields_by_column_number = BigML::invert_dictionary(@fields, 'column_number')
-       BigML::find_locale(data_locale, verbose)
+       BigML::Util::find_locale(data_locale, verbose)
        @missing_tokens = missing_tokens
        @fields_columns = @fields_by_column_number.keys.sort
        # Ids of the fields to be included
@@ -293,8 +281,8 @@ module BigML
               # field as objective
               @objective_field = @fields_columns[-1]
             end
-	else
-	   @objective_field = objective_field
+        else
+           @objective_field = objective_field
         end
  
         # If present, remove the objective field from the included fields
@@ -330,9 +318,9 @@ module BigML
            end
         end
 
-      end
+     end
 
-      def field_id(key)
+     def field_id(key)
         #Returns a field id.
         if key.is_a?(String)
           begin
@@ -350,9 +338,9 @@ module BigML
           end
           return id 
         end
-      end
+     end
 
-      def field_name(key)
+     def field_name(key)
         #"Returns a field name.
 
         if key.is_a?(key, String)
@@ -371,24 +359,24 @@ module BigML
           return name
         end
         
-      end
+     end
 
-      def field_column_number(key)
+     def field_column_number(key)
         # Returns a field column number.
         begin 
           return @fields[key]['column_number']
         rescue Exception
           return @fields[@fields_by_name[key]]['column_number']
         end
-      end
+     end
 
-      def len()
+     def len()
         #Returns the number of fields.
         return @fields.size
-      end
+     end
 
 
-      def pair(row, headers=nil, objective_field=nil, objective_field_present=nil)
+     def pair(row, headers=nil, objective_field=nil, objective_field_present=nil)
         # Pairs a list of values with their respective field ids.
 
         # objective_field is the column_number of the objective field.
@@ -428,18 +416,18 @@ module BigML
         row = row.collect {|info| normalize(info)}
         return to_input_data(row)
 
-      end
+     end
 
-      def list_fields(out=$STDOUT)
+     def list_fields(out=$STDOUT)
         # Lists a description of the fields.
 
         @fields.sort_by {|k| k[1]['column_number']}.each do |field|
            out.puts "[%s%s: %s%s: %s%s]" % [field["name"], ' '*32, field['optype'], ' '*16, field['column_number'], ' '*8]
         end
 
-      end
+     end
 
-      def preferred_fields()
+     def preferred_fields()
         # Returns fields where attribute preferred is set to True or where
         # it isn't set at all.
         result ={} 
@@ -449,9 +437,9 @@ module BigML
            end
         end
         return result 
-      end
+     end
  
-      def validate_input_data(input_data, out=$STDOUT)
+     def validate_input_data(input_data, out=$STDOUT)
         # Validates whether types for input data match types in the
         # fields definition.
         
@@ -475,9 +463,9 @@ module BigML
         else
             out.puts "Input data must be a dictionary"
         end
-      end
+     end
 
-      def normalize(value)
+     def normalize(value)
         #Transforms to unicode and cleans missing tokens
 
         if value.is_a?(String) and value.encoding.to_s != "UTF-8"
@@ -486,10 +474,10 @@ module BigML
   
         return @missing_tokens.include?(value) ?  nil : value
 
-      end
+     end
 
 
-      def to_input_data(row)
+     def to_input_data(row)
         #Builds dict with field, value info only for the included headers
 
         pair = {}
@@ -500,10 +488,10 @@ module BigML
 
         return pair
 
-      end
+     end
 
 
-      def missing_counts()
+     def missing_counts()
         #Returns the ids for the fields that contain missing values
  
         summaries = []
@@ -512,7 +500,7 @@ module BigML
         end       
 
         if summaries.size == 0
-            raise ArgumentError("The structure has not enough information 
+            raise ArgumentError.new("The structure has not enough information 
                                 to extract the fields containing missing values.
                                 Only datasets and models have such information. 
                                 You could retry the get remote call 
@@ -528,14 +516,14 @@ module BigML
        
         return result 
 
-      end
+     end
 
-      def stats(field_name)
+     def stats(field_name)
         #Returns the summary information for the field
         return  @fields[field_id(field_name)].fetch('summary', {})
-      end
+     end
 
-      def summary_csv(filename=nil)
+     def summary_csv(filename=nil)
         # Summary of the contents of the fields
         summary = []
         writer = nil
@@ -614,6 +602,128 @@ module BigML
           writer.close()
         end
 
-      end
+     end
+      
+     def new_fields_structure(csv_attributes_file=nil,
+                             attributes=nil, out_file=nil)
+        # Builds the field structure needed to update a fields dictionary
+        #         in a BigML resource.
+        #         :param csv_attributes_file: (string) Path to a CSV file like the one
+        #                                              generated by summary_csv.
+        #         :param attributes: (list) list of rows containing the
+        #                                   attributes information ordered
+        #                                   as in the summary_csv output.
+        #         :param out_file: (string) Path to a JSON file that will be used
+        #                                   to store the new fields structure. If None,
+        #                                   the output is returned as a dict.
+
+        if !csv_attributes_file.nil?
+          attributes = CSV.read(csv_attributes_file)
+        end
+        
+        new_fields_structure = {}
+        
+        if attributes[0].include?("field ID") or attributes[0].include?("field column")
+          
+           attributes[1..-1].each_with_index do |row, index| 
+             new_attributes={}
+             row.each_with_index do |column,i|
+               new_attributes[attributes[0][i]]=column
+             end 
+            
+             if !new_attributes.fetch("field ID", nil).nil?
+               field_id = new_attributes["field ID"]
+               if !@fields.keys.include?(field_id)
+                 raise ArgumentError.new("Field ID %s not found in this resource " % field_id)
+               end 
+               new_attributes.delete("field ID")
+             else
+               begin
+                 field_column = new_attributes["field column"].to_i
+               rescue
+                 raise ArgumentError.new("Field column %s not found in this resource" % field_column)
+               end 
+               
+               if !@fields_columns.include?(field_column)
+                 raise ArgumentError.new("Field column %s not found in this resource" % field_column)
+               end 
+               
+               field_id = @field_id[field_column]
+               new_attributes.delete("field column")
+             end  
+            
+             new_attributes_headers = new_attributes.keys
+             
+             new_attributes.keys.each do |attribute|
+               if !UPDATABLE_HEADERS.keys().include?(attribute)
+                 new_attributes.delete("attribute")
+               else
+                 new_attributes[UPDATABLE_HEADERS[attribute]] = new_attributes[attribute]
+                 if attribute != UPDATABLE_HEADERS[attribute]
+                   new_attributes.delete("attribute")
+                 end 
+               end 
+             end
+             
+             if new_attributes.key?("preferred")
+               new_attributes['preferred'] = JSON.parse(new_attributes['preferred'])
+             end 
+             
+             new_fields_structure[field_id] = new_attributes
+             
+           end
+           
+        else
+          # assume the order given in the summary_csv method
+          first_attribute = attributes[0][0]
+          first_column_is_id = false
+          
+          begin
+            field_id = @field_id[first_attribute.to_i]
+          rescue 
+            field_id = first_attribute
+            first_column_is_id = true
+          end  
+          
+          if !@fields.key?(field_id)
+            raise ArgumentError.new("The first column should contain either the column or ID of the fields. Failed to find  %s as either of them." % field_id)
+          end
+          
+          headers = SUMMARY_HEADERS[2..6]
+          headers = headers.map{|header| UPDATABLE_HEADERS[header]}
+          
+          begin
+            attributes.each do|field_attributes|
+              if !field_attributes[6].nil?
+                field_attributes[6] = JSON.parse(field_attributes[6])
+              end
+              
+              field_id =  first_column_is_id ? field_attributes[0] : @field_id[field_attributes[0].to_i]
+              new_fields_structure[field_id] = {}
+              
+              field_attributes[1..5].each_with_index do |column,i|
+                new_fields_structure[field_id][headers[i]] = column
+              end
+              
+            end  
+          rescue
+            raise ArgumentError.new("The first column should contain either the column or ID of the fields. Failed to find  %s as either of them." % field_id)
+          end  
+          
+        end
+        
+        if out_file.nil?
+          return {"fields" => new_fields_structure}
+        else
+          begin
+            File.open(out_file, "w:UTF-8") do |f|
+               f.write JSON.generate({"fields" => new_fields_structure})
+            end
+          rescue IOError
+            raise IOError, "Failed writing the fields structure file in  %s- Please, check your arguments." % out_file
+          end  
+        end  
+            
+     end
   end
 end

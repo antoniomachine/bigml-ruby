@@ -54,26 +54,24 @@ class TestMultiVotePredicction < Test::Unit::TestCase
        multivote =  BigML::MultiVote.new(JSON.parse(File.open(item["filename"], "rb").read))
 
        puts "When I compute the prediction with confidence using method <%s>" % item["method"]
-       combined_results = multivote.combine(item["method"], true)
+       combined_results = multivote.combine(item["method"], nil, true)
 
        puts "And I compute the prediction without confidence using method <%s>" % item["method"] 
        combined_results_no_confidence = multivote.combine(item["method"])
 
        if multivote.is_regression() 
           puts "Then the combined prediction is <%s>" % item["prediction"]
-          assert_equal(combined_results[0].round(6), item["prediction"].round(6))
+          assert_equal(combined_results["prediction"].round(6), item["prediction"].round(6))
           puts "And the combined prediction without confidence is <%s>" % item["prediction"]
           assert_equal(combined_results_no_confidence.round(6), item["prediction"].round(6))
        else
           puts "Then the combined prediction is <%s>" % item["prediction"]
-          assert_equal(combined_results[0], item["prediction"])
+          assert_equal(combined_results["prediction"], item["prediction"])
           puts "And the combined prediction without confidence is <%s>" % item["prediction"]
           assert_equal(combined_results_no_confidence,item["prediction"])
        end
-
        puts "And the confidence for the combined prediction is %s " % item["confidence"]
-       assert_equal(combined_results[1].round(6), item["confidence"].round(6)) 
-
+       assert_equal(combined_results["confidence"].round(5), item["confidence"].round(5)) 
     end
 
   end

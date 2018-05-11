@@ -6,7 +6,7 @@ require "test/unit"
 class TestPublicModelPrediction < Test::Unit::TestCase
 
   def setup
-   @api = BigML::Api.new(nil, nil)
+   @api = BigML::Api.new
    @test_name=File.basename(__FILE__).gsub('.rb','')
    @api.delete_all_project_by_name(@test_name)
    @project = @api.create_project({'name' => @test_name})

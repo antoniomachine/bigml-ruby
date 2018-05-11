@@ -19,6 +19,7 @@ require_relative 'stats'
 require_relative 'prediction'
 require_relative 'multivote'
 require_relative 'util'
+require_relative 'tree_utils'
 
 module BigML
   #Tree structure for the BigML local Model
@@ -26,18 +27,6 @@ module BigML
   # This module defines an auxiliary Tree structure that is used in the local Model
   # to make predictions locally or embedded into your application without needing
   # to send requests to BigML.io.
-
-  
-  # Map operator str to its corresponding python operator
-  RUBY_OPERATOR = {
-    "<" => :<,
-    "<=" => :<=,
-    "=" => :==,
-    "!=" => :!=,
-    "/=" => :!=,
-    ">=" =>  :>=,
-    ">" => :>,
-  }
 
   MISSING_OPERATOR = {
     "=" => "is",
@@ -48,13 +37,6 @@ module BigML
     "=" => "ISNULL(",
     "!=" => "NOT ISNULL("
   }
-
-  MAX_ARGS_LENGTH = 10
-
-  INDENT = '    '
-
-  TERM_OPTIONS = ["case_sensitive", "token_mode"]
-  ITEM_OPTIONS = ["separator", "separator_regexp"]
 
   LAST_PREDICTION = 0
   PROPORTIONAL = 1
@@ -122,58 +104,6 @@ module BigML
 
   end
 
-  def self.filter_nodes(nodes_list, ids=nil, subtree=true)
-    # Filters the contents of a nodes_list. If any of the nodes is in the
-    #   ids list, the rest of nodes are removed. If none is in the ids list
-    #   we include or exclude the nodes depending on the subtree flag.
-    #
-    if nodes_list.empty?
-       return nil 
-    end
-
-    nodes = nodes_list.clone
-
-    if !ids.nil?
-        nodes.each do |node|
-           if ids.include?(node["id"])
-              nodes = [node]
-              return nodes
-           end
-        end 
-    end
-
-    if !subtree
-       nodes = []
-    end
-
-    return nodes
-
-  end
-
-  def self.missing_branch(children)
-    # "Checks if the missing values are assigned to a special branch
-    return children.any?{|child| child.predicate.missing }
-  end
-
-  def self.none_value(children)
-    # Checks if the predicate has a nil value
-    return children.any?{|child| child.predicate.value.nil?}
-  end
-
-  def self.split(children)
-    # Returns the field that is used by the node to make a decision.
-    field = children.collect{|child| child.predicate.field }.uniq
-    if field.size == 1
-      return field[0]
-    end
-  end
-
-  def self.one_branch(children, input_data)
-    # Check if there's only one branch to be followed
-    missing = input_data.include?(split(children))
-    return (missing or missing_branch(children) or none_value(children))
-  end
-
   def self.extract_distribution(summary)
     # Extracts the distribution info from the objective_summary structure
     #   in any of its grouping units: bins, counts or categories
@@ -206,7 +136,7 @@ module BigML
   class Tree
      attr_accessor :regression, :predicate, :output, :children, :predicate, :confidence,
                    :distribution, :distribution_unit, :median, :min, :max, 
-		   :objective_id, :fields, :count, :impurity
+		   :objective_id, :fields, :count, :impurity, :weighted
      # A tree-like predictive model.
 
      def initialize(tree, fields, objective_field=nil,
@@ -244,8 +174,8 @@ module BigML
                                      objective_field,
                                      nil,
                                      @id,
-                                     @ids_map,
-                                     @subtree,
+                                     ids_map,
+                                     subtree,
                                      tree_info)
            end
         end
@@ -259,7 +189,7 @@ module BigML
         @max = nil
         @min = nil
         @weighted = false
-
+        @median = nil
         summary = nil 
         if tree.key?('distribution')
            @distribution = tree['distribution']
@@ -271,6 +201,7 @@ module BigML
                  summary = tree['weighted_objective_summary']
                  @weighted_distribution_unit,
                  @weighted_distribution = BigML::extract_distribution(summary)
+                 @weight = tree["weight"]
                  @weighted = true
             end
         else
@@ -282,7 +213,7 @@ module BigML
         if @regression
             tree_info['max_bins'] = [tree_info.fetch('max_bins', 0),
                                         @distribution.size].max
-            @median = nil
+            
             if !summary.nil? and !summary.empty?
                 @median = summary.fetch('median')
             end
@@ -376,8 +307,13 @@ module BigML
                 'distribution' =>  @distribution,
                 'impurity' => @impurity,
                 'output' =>  @output,
-                'path' => @path}
+                'path' => path}
 
+           if defined?(@weighted_distribution)
+             leaf.merge!({"weighted_distribution": @weighted_distribution,
+                          "weight": @weight})
+           end    
+           
            if !filter_function.key?('__call__') or filter_function(leaf)
               leaves += [leaf]
            end
@@ -407,8 +343,9 @@ module BigML
              d_min,
              d_max,
              last_node,
-             population = predict_proportional(input_data, path)
- 
+             population,
+             parent_node = predict_proportional(input_data, path)
+          
           if @regression
              # singular case:
              # when the prediction is the one given in a 1-instance node
@@ -420,7 +357,7 @@ module BigML
                             last_node.output,
                             path,
                             last_node.confidence,
-                            last_node.distribution,
+                            @weighted ? last_node.weighted_distribution : last_node.distribution,
                             instances,
                             last_node.distribution_unit,
                             last_node.median,
@@ -436,10 +373,27 @@ module BigML
 
              total_instances = distribution.collect{|k,instances| instances}.inject(0){|sum,x|sum+x}
 
-             prediction = BigML::mean(distribution)
+             if distribution.size == 1
+               # where there's only one bin, there will be no error, but
+               # we use a correction derived from the parent's error
+               
+               prediction = distribution[0][0]
+               if total_instances < 2
+                  total_instances = 1
+               end
+               
+               begin
+                 confidence = (parent_node.confidence / Math.sqrt(total_instances)).round(BigML::Util::PRECISION)
+               rescue
+                 confidence = nil
+               end    
+               
+             else
+               prediction = BigML::mean(distribution)
 
-             confidence = BigML::regression_error(BigML::unbiased_sample_variance(distribution, prediction),
-                                           total_instances)
+               confidence = BigML::regression_error(BigML::unbiased_sample_variance(distribution, prediction),
+                                           total_instances).round(BigML::Util::PRECISION)
+             end
              return BigML::Prediction.new(prediction,
                                path,
                                confidence,
@@ -458,8 +412,8 @@ module BigML
                     BigML::ws_confidence(distribution[0][0], final_distribution, 1.96, population),
                     distribution,
                     population,
-                    distribution_unit='categorical',
-                    median=nil,
+                    'categorical',
+                    nil,
                     last_node.children)
           end
 
@@ -472,23 +426,31 @@ module BigML
                  end
                end
            end
-
+           
+           if @weighted
+             output_distribution = @weighted_distribution
+             output_unit = @weighted_distribution_unit
+           else
+             output_distribution = @distribution
+             output_unit = @distribution_unit
+           end
+           
            return BigML::Prediction.new(
                 @output,
                 path,
                 @confidence,
-                @distribution,
-                BigML::get_instances(@distribution),
-                @distribution_unit,
-                !@regression ? nil : @median,
+                output_distribution,
+                BigML::get_instances(output_distribution),
+                output_unit,
+                @regression.nil? ? nil : @median,
                 @children,
-                !@regression ? nil : @max,
-                !@regression ? nil : @min) 
+                @regression.nil? ? nil : @max,
+                @regression.nil? ? nil : @min) 
         end
      end
 
      def predict_proportional(input_data, path=nil,
-                             missing_found=false, median=false)
+                             missing_found=false, median=false, parent=nil)
         # Makes a prediction based on a number of field values averaging
         #   the predictions of the leaves that fall in a subtree.
 
@@ -503,26 +465,24 @@ module BigML
         final_distribution = {}
  
         if @children.nil? or @children.empty?
-
           distribution = !@weighted ? @distribution : @weighted_distribution 
-
           dict = {}
           distribution.each do |x|
             dict[x[0]] = x[1]
           end
 
-          result = [BigML::merge_distributions({}, dict), @min, @max, self, @count]
+          result = [BigML::merge_distributions({}, dict), @min, @max, self, @count, parent]
           return result
         end
 
-        if BigML::one_branch(@children, input_data) or ["text", "items"].include?(@fields[BigML::split(@children)]["optype"]) 
+        if BigML::one_branch(@children, input_data) or ["text", "items"].include?(@fields[BigML::Util::split(@children)]["optype"]) 
            @children.each do |child|
              if child.predicate.apply(input_data, @fields)
                 new_rule = child.predicate.to_rule(@fields)
                 if !path.include?(new_rule) and !missing_found
                    path << new_rule
                 end
-                return child.predict_proportional(input_data, path, missing_found, median)
+                return child.predict_proportional(input_data, path, missing_found, median, self)
              end
            end 
         else
@@ -532,7 +492,7 @@ module BigML
           maximums = []
           population = 0
           @children.each do |child|
-             subtree_distribution, subtree_min, subtree_max, _, subtree_pop = child.predict_proportional(input_data, path, missing_found, median)
+             subtree_distribution, subtree_min, subtree_max, _, subtree_pop, _ = child.predict_proportional(input_data, path, missing_found, median, parent)
              if !subtree_min.nil?
                 minimums << subtree_min
              end
@@ -548,15 +508,15 @@ module BigML
           end
 
           return [final_distribution, 
-                  minimums.empty? ? minimums.min : nil,
-                  maximums.empty? ? maximums.max : nil,
-                  self, population]
+                  !minimums.empty? ? minimums.min : nil,
+                  !maximums.empty? ? maximums.max : nil,
+                  self, population, self]
         end    
 
      end
 
      def generate_rules(depth=0, ids_path=nil, subtree=true)
-        # Translates a tree model into a set of IF-THEN rules.
+        # Translates a tree model into a set of IF-THEN rules.
         rules = ""
         children = BigML::filter_nodes(@children, ids_path,
                                          subtree)

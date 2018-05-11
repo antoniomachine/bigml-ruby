@@ -65,22 +65,25 @@ module BigML
         # Squared Distance from the given input data to the centroid
         #
         distance2 = 0.0
+
         @center.each do |field_id, value|
             if value.is_a?(Array)
               # text field
               terms = !term_sets.key?(field_id) ? [] : term_sets[field_id]
               distance2 += BigML::cosine_distance2(terms, value, scales[field_id]) 
+              
             elsif value.is_a?(String) 
               if !input_data.key?(field_id) or input_data[field_id] != value
                  distance2 += 1 * scales[field_id] ** 2
               end
-            else
-              distance2 += ((input_data[field_id] - value) *scales[field_id]) ** 2
+            else              
+              distance2 += ((input_data[field_id].to_f - value) *scales[field_id]) ** 2
             end
             if !stop_distance2.nil? and distance2 >= stop_distance2
                return nil
             end
         end
+
         return distance2
  
       end

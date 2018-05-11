@@ -22,13 +22,9 @@ require 'open-uri'
 require_relative 'domain'
 require_relative 'util'
 
-# TODO logger
-
 module BigML
   # Base URL
   BIGML_URL = 'PROTOCOL://DOMAIN/andromeda/'
-  # Development Mode URL
-  BIGML_DEV_URL = 'PROTOCOL://DOMAIN/dev/andromeda/'
 
   # HTTP Status Codes from https://bigml.com/developers/status_codes
   HTTP_OK = 200
@@ -47,14 +43,21 @@ module BigML
 
   # Headers
   CONTENT_TYPE = 'application/json'
+  JSON_TYPE = 'application/json'
+  
   CHARSET ='utf-8'
   DOWNLOAD_DIR = '/download'
 
   class BigMLConnection
 
      def initialize(username = nil, api_key = nil, dev_mode = false, 
-                    debug = false, set_locale = false, storage = nil, domain = nil)
+                    debug = false, set_locale = false, storage = nil, domain = nil,
+                    project=nil, organization=nil)
 
+       if dev_mode
+          warn("Development mode is deprecated and the dev_mode flag will be removed.")
+       end   
+       
        username = username.nil? ? ENV['BIGML_USERNAME'] : username
        api_key = api_key.nil? ? ENV['BIGML_API_KEY'] : api_key
 
@@ -67,6 +70,8 @@ module BigML
        end 
 
        @auth = "?username=#{username};api_key=#{api_key};"
+       @project =  project 
+       @organization =  organization
        @dev_mode = dev_mode
        @debug = debug
        @general_domain = nil
@@ -79,7 +84,7 @@ module BigML
        @prediction_url = nil
        @storage=nil
 
-       self._set_api_urls(dev_mode, domain)
+       self._set_api_urls(domain)
     
        unless storage.nil?
           if Dir.exists?(storage)
@@ -98,6 +103,10 @@ module BigML
        # 
        # Sets the urls that point to the REST api methods for each resource
        #
+       if dev_mode
+          warn("Development mode is deprecated and the dev_mode flag will be removed.")
+       end 
+       
        if domain.nil?
           domain = BigML::Domain.new
        elsif domain.is_a? String 
@@ -113,19 +122,54 @@ module BigML
        @verify = domain.verify
        @verify_prediction = domain.verify_prediction
       
-       if dev_mode
-         @url = BIGML_DEV_URL.gsub("PROTOCOL", @general_protocol).gsub("DOMAIN", @general_domain)
-         @prediction_url = BIGML_DEV_URL.gsub("PROTOCOL", @general_protocol).gsub("DOMAIN", @general_domain)
-       else
-         # Using a different prediction domain and protocol only in 
-         #  production mode. Dev-mode uses the general values.
-          @url = BIGML_URL.gsub("PROTOCOL", BigML::Domain::BIGML_PROTOCOL).gsub("DOMAIN", @general_domain)
-          @prediction_url = BIGML_URL.gsub("PROTOCOL", @prediction_protocol).gsub("DOMAIN", @prediction_domain)
-       end
- 
-     end
+       @url = BIGML_URL.gsub("PROTOCOL", BigML::Domain::BIGML_PROTOCOL).gsub("DOMAIN", @general_domain)
+       @prediction_url = BIGML_URL.gsub("PROTOCOL", @prediction_protocol).gsub("DOMAIN", @prediction_domain)
 
-     def _create(url, body)
+     end
+     
+     def _add_credentials(url, organization=false, shared_auth=nil)
+       # Adding the credentials and project or organization information
+       # for authentication
+       # The organization argument is a boolean that controls authentication
+       # profiles in organizations. When set to true,
+       # the organization ID is used to access the projects in an
+       # organization. If false, a particular project ID must be used.
+       # The shared_auth string provides the alternative credentials for
+       # shared resources.
+
+       return "%s%s%s" % [url, 
+                          shared_auth.nil? ? @auth : shared_auth,
+                          (organization and !@organization.nil?) ? "organization=%s;" % @organization : 
+                                    !@project.nil? ? "project=%s;" % @project : ""]
+     end
+     
+     def _add_project(payload, include_project=true)
+       # Adding project id as attribute when it has been set in the
+       # connection arguments.
+       to_string = false
+       
+        if !@project.nil? and include_project
+          # Adding project ID to args if it's not set
+          if payload.is_a?(String)
+            payload = JSON.parse(payload)
+            to_string = True
+          end    
+          
+          if payload.fetch("project", nil).nil?
+            payload["project"] = @project
+          end
+              
+          if to_string
+            return JSON.generate(payload)
+          end
+          
+        end
+                
+        return payload
+        
+     end
+      
+     def _create(url, body, verify=nil,organization=nil)
        #Creates a new remote resource.
 
        #Posts `body` in JSON to `url` to create a new remote resource.
@@ -147,11 +191,21 @@ module BigML
        # return a HTTP_ACCEPTED (202) while the model or ensemble is being
        # downloaded.
        code = HTTP_ACCEPTED
+       if verify.nil?
+         verify = @verify
+       end
+       
+       url = self._add_credentials(url, organization)
+       body = self._add_project(body, organization.nil?)
+
+       t1 = Time.now.to_i
        while (code == HTTP_ACCEPTED) do
           begin
-            response = RestClient.post url+@auth, body, {:content_type => :json, :accept => :json, :charset => "utf-8"}
+            response = RestClient.post url, body, {:content_type => :json, :accept => :json, :charset => "utf-8", :verify_ssl => verify, :read_timeout => 300, :open_timeout => 300, :timeout => 300}
           rescue RestClient::RequestTimeout
-             raise 'Request Timeout'
+             t2 = Time.now.to_i
+             puts "Timeout %s" % (t2-t1)
+             raise Exception, 'Request Timeout'
           rescue RestClient::Exception => response
              code = response.http_code
              if [HTTP_BAD_REQUEST, HTTP_UNAUTHORIZED, HTTP_PAYMENT_REQUIRED, HTTP_FORBIDDEN, HTTP_NOT_FOUND, HTTP_TOO_MANY_REQUESTS].include?(code)
@@ -177,7 +231,7 @@ module BigML
                code = HTTP_INTERNAL_SERVER_ERROR
             end
 
-          rescue StandardError => e
+          rescue StandardError
              code=HTTP_INTERNAL_SERVER_ERROR
           end
 
@@ -186,7 +240,7 @@ module BigML
        end
      end
 
-     def _get(url, query_string='', shared_username=nil, shared_api_key=nil)
+     def _get(url, query_string='', shared_username=nil, shared_api_key=nil, organization=nil)
         # Retrieves a remote resource.
         # Uses HTTP GET to retrieve a BigML `url`.
 
@@ -206,11 +260,16 @@ module BigML
         auth = shared_username.nil? ? @auth : "?username=#{shared_username};api_key=#{shared_api_key}"
 
         query_string = query_string.nil? ? '' : query_string
-
+           
+        url = self._add_credentials(url, organization, 
+                                   !shared_username.nil? && !shared_api_key.nil? ? auth : nil) + query_string
+        t1 = Time.now.to_i
         begin
-           response = RestClient.get url+auth+query_string, :accept => "application/json;charset=utf-8"
+           response = RestClient.get url, :accept => "application/json;charset=utf-8", :verify_ssl => @verify, :read_timeout => 300, :open_timeout => 300
         rescue RestClient::RequestTimeout
-           raise 'Request Timeout'
+           t2 = Time.now.to_i
+           puts "Timeout %s" % (t2-t1)
+           raise Exception, 'Request Timeout'
         rescue RestClient::Exception => e
            code = HTTP_INTERNAL_SERVER_ERROR
            return BigML::Util::maybe_save(resource_id, @storage, code,
@@ -228,16 +287,16 @@ module BigML
            else
               code=HTTP_INTERNAL_SERVER_ERROR
            end
-        rescue JSON::NestingError => e
-           raise "max nesting json is 500" 
-        rescue StandardError => e
+        rescue JSON::NestingError
+           raise Exception, "max nesting json is 500" 
+        rescue StandardError
           code=HTTP_INTERNAL_SERVER_ERROR
         end
      
         return BigML::Util::maybe_save(resource_id, @storage, code, location, resource, error)
      end
 
-     def _list(url, query_string='')
+     def _list(url, query_string='', organization=nil)
        #Lists all existing remote resources.
 
        # Resources in listings can be filterd using `query_string` formatted
@@ -264,10 +323,12 @@ module BigML
        resources = nil 
        error = {"status" => {"code" => code, "message" => "The resource couldn't be listed"}}
 
+       url = self._add_credentials(url, organization) + query_string
+                   
        begin
-         response = RestClient.get url+@auth+query_string, :accept => "application/json;charset=utf-8"
+         response = RestClient.get url, :accept => "application/json;charset=utf-8", :verify_ssl => @verify
        rescue RestClient::RequestTimeout
-         raise 'Request Timeout'
+         raise Exception, 'Request Timeout'
        rescue RestClient::Exception => e
          code = HTTP_INTERNAL_SERVER_ERROR
          return BigML::Util::maybe_save(resource_id, @storage, code,
@@ -294,7 +355,7 @@ module BigML
 
      end
 
-     def _update(url, body)
+     def _update(url, body, organization=nil)
        # Updates a remote resource.
        # Uses PUT to update a BigML resource. Only the new fields that
        #  are going to be updated need to be included in the `body`.
@@ -312,11 +373,14 @@ module BigML
        location=url
        resource=nil
        error = {"status" => {"code" => code, "message" => "The resource couldn't be updated"}}
-
+       
+       url = self._add_credentials(url, organization)
+       body = self._add_project(body, organization.nil?)
+              
        begin
-         response = RestClient.put url+@auth, body, :content_type => "application/json;charset=utf-8"
+         response = RestClient.put url, body, :content_type => "application/json;charset=utf-8", :verify_ssl => @verify
        rescue RestClient::RequestTimeout
-         raise 'Request Timeout'
+         raise Exception, 'Request Timeout'
        rescue RestClient::Exception => e
          code = HTTP_INTERNAL_SERVER_ERROR
          return BigML::Util::maybe_save(resource_id, @storage, code,
@@ -342,7 +406,7 @@ module BigML
 
      end
 
-     def _delete(url)
+     def _delete(url, query_string='', organization=nil)
        #Permanently deletes a remote resource.
 
        # If the request is successful the status `code` will be HTTP_NO_CONTENT
@@ -351,11 +415,12 @@ module BigML
   
        code = HTTP_INTERNAL_SERVER_ERROR
        error = {"status" => {"code" => code, "message" => "The resource couldn't be deleted"}}
-
+       url = self._add_credentials(url, organization) + query_string
+                   
        begin
-         response = RestClient.delete url+@auth
+         response = RestClient.delete url, :verify_ssl => @verify
        rescue RestClient::RequestTimeout
-         raise 'Request Timeout'
+         raise Exception, 'Request Timeout'
        rescue RestClient::Exception => e
          code = HTTP_INTERNAL_SERVER_ERROR
          return BigML::Util::maybe_save(resource_id, @storage, code,
@@ -392,7 +457,7 @@ module BigML
        response ={"content_type" => nil, "code" => nil, "content-length" => nil} 
 
        begin
-          open(url+@auth) do |f|
+          open(self._add_credentials(url)) do |f|
              response["code"] = f.status
              response["content_type"] =  f.content_type
              response["content-length"] = f.meta["content-length"]
@@ -405,7 +470,7 @@ module BigML
 
        begin
           if code == HTTP_OK
-             if response["content_type"] == CONTENT_TYPE
+             if response["content_type"] == JSON_TYPE
                 begin
                    if counter < retries 
                       download_status = JSON.parse(file_object, :max_nesting => 500)
@@ -413,9 +478,9 @@ module BigML
                          if download_status['status']['code'] != 5
                             sleep(BigML::Util::get_exponential_wait(wait_time, counter))
                             counter += 1
-                            return _download(url, filename, wait_time, retries, counter)
+                            return _download(self._add_credentials(url), filename, wait_time, retries, counter)
                          else
-                            return _download(url, filename, wait_time, retries, retries+1)
+                            return _download(self._add_credentials(url), filename, wait_time, retries, retries+1)
                          end                          
                       end
 
@@ -429,12 +494,12 @@ module BigML
              else
 
                unless filename.nil?
-	          file_size = stream_copy(file_object, filename)
+                  file_size = stream_copy(file_object, filename)
                   if response["content-length"].nil? or (response["content-length"].to_i < file_object.size)
                       puts "Error downloading: total size= "+response["content-length"] + " "+ file_object.size + " downloaded" 
                       sleep(BigML::Util::get_exponential_wait(wait_time, counter))
-                      return _download(url, filename, wait_time, retries, counter+1)
-		  end
+                      return _download(self._add_credentials(url), filename, wait_time, retries, counter+1)
+                   end
                end 
 
              end
@@ -479,7 +544,7 @@ module BigML
           if code == HTTP_NOT_FOUND and method == 'get'
             alternate_message = ''
             if @general_domain != BigML::Domain::DEFAULT_DOMAIN
-               alternate_message = "- The "+resource_type +" was not created in "+ @general_domain +".\n" 
+               alternate_message = "- The %s was not created in %s.\n" % [resource_type, @general_domain]
             end
           
             error += "\nCouldn\'t find a %s matching the given id in %a. The most probable 

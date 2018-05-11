@@ -6,7 +6,7 @@ require "test/unit"
 class TestMultimodelPrediction < Test::Unit::TestCase
 
   def setup
-   @api = BigML::Api.new(nil, nil, true)
+   @api = BigML::Api.new
    @test_name=File.basename(__FILE__).gsub('.rb','')
    @api.delete_all_project_by_name(@test_name)
    @project = @api.create_project({'name' => @test_name})
@@ -142,10 +142,11 @@ class TestMultimodelPrediction < Test::Unit::TestCase
 
        puts "And I create a local multi model"
        local_multimodel = BigML::MultiModel.new(list_of_models, @api)
- 
+
        puts "When I create a batch multimodel prediction for <%s>" % JSON.generate(data_inputs)
-       predictions = local_multimodel.batch_predict(data_inputs, nil, true, false,  
-                                                    BigML::LAST_PREDICTION, nil, false, false)
+       predictions = local_multimodel.batch_predict(data_inputs, nil, false, 
+                                                    BigML::LAST_PREDICTION, nil,
+                                                    false, false)
        i=0
        predictions.each do |multivote|
           multivote.predictions.each do |prediction|

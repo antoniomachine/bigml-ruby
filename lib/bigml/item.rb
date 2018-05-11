@@ -18,7 +18,7 @@
 #  Item object for the Association resource.
 #  This module defines each item in an Association resource.
 #
-
+require_relative 'predicate'
 module BigML
   
    class Item
@@ -162,7 +162,7 @@ module BigML
             # for item fields, the item.name should be in the considered value
             # surrounded by separators or regexp
             options = @field_info['item_analysis']
-            result = item_matches(value, @name, options) > 0
+            result = BigML::item_matches(value, @name, options) > 0
         end
 
         if @complement

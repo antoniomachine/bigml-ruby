@@ -21,12 +21,105 @@ require_relative 'api'
 require_relative 'tree'
 require_relative 'multivote'
 require_relative 'path'
+require_relative 'util'
+require_relative 'boostedtree'
 
 module BigML
 
    STORAGE = './storage'
    DEFAULT_IMPURITY = 0.2
-
+   OPERATING_POINT_KINDS = ["probability", "confidence"]
+   DICTIONARY = "hash"
+   OUT_FORMATS = [DICTIONARY, "array"]
+   
+   def self.init_structure(to)
+     # Creates the empty structure to store predictions depending on the
+     # chosen format.
+     if to.nil? and !OUT_FORMATS.include?(to)
+       raise ArgumentError.new("The allowed formats are %s." % OUT_FORMATS.join(", "))
+     end
+     
+     return to == DICTIONARY ? {} : to.nil? ? () : []
+    
+   end
+   
+   def self.cast_prediction(full_prediction, to=nil, confidence=false,
+                       probability=false,path=false, distribution=false, 
+                       count=false, _next=false, d_min=false, d_max=false, 
+                       median=false,unused_fields=false)
+       # Creates the output filtering the attributes in a full
+       # prediction.
+       #     to: defines the output format. The current
+       #        values are: None, `list` and `dict`. If not set, the result
+       #         will be expressed as a tuple. The other two options will
+       #         produce a list and a dictionary respectively. In the case of lists,
+       #         the attributes are stored in the same order used in
+       #         the signature of the function.
+       #     confidence: Boolean. If True, adds the confidence to the output
+       #    probability: Boolean. If True, adds the probability to the output
+       #     path: Boolean. If True adds the prediction path to the output
+       #     distribution: distribution of probabilities for each
+       #                   of the objective field classes
+       #     count: Boolean. If True adds the number of training instances in the
+       #            prediction node to the output
+       #     next: Boolean. If True adds the next predicate field to the output
+       #     d_min: Boolean. If True adds the predicted node distribution
+       #           minimum to the output
+       #     d_max: Boolean. If True adds the predicted node distribution
+       #            maximum to the output
+       #    median: Boolean. If True adds the median of the predicted node
+       #             distribution to the output
+       #   unused_fields: Boolean. If True adds the fields used in the input
+       #                    data that have not been used by the model.
+       #
+       prediction_properties = ["prediction", "confidence", "probability", "path", "distribution",
+                                "count", "next", "d_min", "d_max", "median", "unused_fields"]
+       result = init_structure(to)
+       prediction=true
+       prediction_properties.each do |prop|
+         value = full_prediction.fetch(prop, nil)
+         if (prop != "next" && eval(prop) or (prop=="next" && _next))
+           if to.nil?
+             result = result+value
+           elsif to == DICTIONARY
+             result.merge!({"prop" => value})
+           else
+             result << value
+           end     
+         end 
+         
+       end
+       
+       return result
+       
+   end
+ 
+   def self.sort_categories(a, b, categories_list)
+     
+     # Sorts a list of dictionaries with category keys according to their
+     # value and order in the categories_list. If not found, alphabetic order is
+     # used.
+     
+     index_a = categories_list.index(a["category"])
+     index_b = categories_list.index(b["category"])
+     
+     if index_a < 0 and index_b < 0
+       
+         index_a = a['category']
+         index_b = b['category']
+     end
+     
+     if index_b < index_a
+         return 1
+     end
+     
+     if index_b > index_a
+         return -1
+     end
+    
+     return 0
+   end
+        
    def self.print_distribution(distribution, out=$STDOUT)
      # Prints distribution data
 
@@ -40,22 +133,63 @@ module BigML
      end
 
    end
+   
+   def self.parse_operating_point(operating_point, operating_kinds, class_names)
+       #
+       # Checks the operating point contents and extracts the three defined
+       # variables
+       #
+       if !operating_point.key?("kind")
+           raise ArgumentError.new("Failed to find the kind of operating point.")
+       elsif !operating_kinds.include?(operating_point["kind"])
+           raise ArgumentError.new("Unexpected operating point kind. Allowed 
+                               values are: %s." % ", ".join(operating_kinds))
+       end
+       
+       if !operating_point.key?("threshold")
+           raise ArgumentError.new("Failed to find the threshold of the operating point.")
+       end
+       
+       if operating_point["threshold"] > 1 or operating_point["threshold"] < 0
+           raise ArgumentError.new("The threshold value should be in the 0 to 1 range.")
+       end
+                          
+       if !operating_point.key?("positive_class")
+           raise ArgumentError.new("The operating point needs to have a positive_class attribute.")
+       else
+           positive_class = operating_point["positive_class"]
+           if !class_names.include?(positive_class)
+               raise ArgumentError.new("The positive class must be one of the
+                                    objective field classes: %s." % ", ".join(class_names))
+           end
+       end
+       
+       kind = operating_point["kind"]
+       threshold = operating_point["threshold"]
 
+       return [kind, threshold, positive_class]
+    
+   end
+     
    class Model < BaseModel
      #  A lightweight wrapper around a Tree model.
 
      #  Uses a BigML remote model to build a local version that can be used
      #  to generate predictions locally.
      #
-     attr_accessor :tree, :fields, :objective_id
+     attr_accessor :tree, :fields, :objective_id, :boosting, :class_names, :regression
 
-     def initialize(model, api=nil)
+     def initialize(model, api=nil, fields=nil)
         # The Model constructor can be given as first argument
         #  a model structure or a model id or  a path to 
         #  a JSON file containing a model structure
         @resource_id = nil 
         @ids_map = {}
         @terms = {}
+        @regression = false
+        @boosting = nil 
+        @class_names = nil
+        
         # the string can be a path to a JSON file
         if model.is_a?(String) 
            if File.file?(model)
@@ -65,10 +199,10 @@ module BigML
                 end
                 @resource_id =  BigML::get_model_id(model)
                 if @resource_id.nil?
-                   raise ArgumentError, "The JSON file does not seem to contain a valid BigML model representation"
+                   raise ArgumentError.new("The JSON file does not seem to contain a valid BigML model representation")
                 end
-              #rescue Exception
-              #    raise ArgumentError, "The JSON file does not seem to contain a valid BigML model representation"
+              rescue Exception
+                  raise Exception, "The JSON file does not seem to contain a valid BigML model representation"
               end
            else
               # if it is not a path, it can be a model id
@@ -83,53 +217,97 @@ module BigML
            end 
         end
 
+        # checks whether the information needed for local predictions is in
+        # the first argument
+        has_model_fields = BigML::check_model_fields(model)
+        if model.is_a?(Hash) and fields.nil? and !has_model_fields
+           # if the fields used by the model are not available, use only ID
+           # to retrieve it again
+           model = BigML::get_model_id(model)
+           @resource_id = model
+        end
+
         if !(model.is_a?(Hash) and model.key?('resource') and !model['resource'].nil?) 
            if api.nil?
               api = BigML::Api.new(nil, nil, false, false, false, STORAGE, nil)
            end
-           query_string = ONLY_MODEL
-           model = BigML::retrieve_resource(api, @resource_id, query_string)
+           if !fields.nil? and fields.is_a?(Hash)
+             query_string = EXCLUDE_FIELDS
+           else
+             query_string = ONLY_MODEL
+           end
+
+           model = BigML::retrieve_resource(api, @resource_id, query_string, !fields.nil?)
         else
            @resource_id =  BigML::get_model_id(model)
         end
 
-        super(model, api)
+        super(model, api, fields)
 
         if model.key?('object') and model['object'].is_a?(Hash)
             model = model['object']
         end
 
         if model.key?("model") and model['model'].is_a?(Hash)
-           status = BigML::get_status(model)
+           status = BigML::Util::get_status(model)
            if status.key?('code') and status['code'] == FINISHED
-              distribution = model['model']['distribution']['training']
-              # will store global information in the tree: regression and
-              # max_bins number
-              tree_info = {'max_bins' => 0}
-              @tree = BigML::Tree.new(model['model']['root'],
-                                @fields,
-                                @objective_id,
-                                distribution,
-                                nil,
-                                @ids_map,
-                                true,
-                                tree_info)
-
-              @tree.regression = tree_info['regression']
-              if @tree.regression
-                @_max_bins = tree_info['max_bins']
+              # boosting models are to be handled using the BoostedTree class
+              
+              if model.fetch("boosted_ensemble", nil).nil?
+                @boosting = model.fetch('boosting', false)
               end
+               
+              if !model.fetch("boosted_ensemble", nil).nil? and model["boosted_ensemble"]
+                @boosting = model.fetch('boosting', false)
+              end
+
+              if @boosting == {}
+                @boosting = false
+              end
+            
+              @regression = (@boosting.nil? and self.fields[self.objective_id]['optype'] == 'numeric') or (@boosting and @boosting.fetch("objective_class",nil).nil?)
+                                  
+              if !defined?(@tree_class)
+                 @tree_class = (@boosting.nil? or !@boosting) ? BigML::Tree : BigML::BoostedTree
+              end
+               
+              if @boosting
+                @tree = @tree_class.new(model['model']['root'], @fields, @objective_id)
+              else
+                distribution = model['model']['distribution']['training']
+                # will store global information in the tree: regression and
+                # max_bins number
+                tree_info = {'max_bins' => 0}
+                @tree = @tree_class.new(model['model']['root'],
+                                        @fields,
+                                        @objective_id,
+                                        distribution,
+                                        nil,
+                                        @ids_map,
+                                        true,
+                                        tree_info)
+
+                @tree.regression = tree_info['regression']
+                if @tree.regression
+                   @_max_bins = tree_info['max_bins']
+                   @regression_ready = true
+                else
+                  root_dist = self.tree.distribution
+                  @class_names = root_dist.collect {|category| category[0]}.sort
+                  @objective_categories = self.fields[self.objective_id]["summary"]["categories"].map{|i| i[0]}
+                end
+              end
+              
+              if @regression.nil? and @boosting.nil?
+                @laplacian_term = self._laplacian_term()
+              end
+                
            else
-             raise Exception, "The model isn't finished yet"
+             raise Exception, "Cannot create the Model instance. Only correctly finished models 
+                               can be used. The model status is currently: %s\n" % STATUSES[status['code']]
            end 
         else
            raise Exception, "Cannot create the Model instance. Could not find the 'model' key in the resource:\n\n %s " % [model]
-        end
-
-        if @tree.regression
-           @regression_ready = true
-        else
-           @regression_ready = false
         end
 
      end
@@ -146,239 +324,440 @@ module BigML
         #   when applied to each leaf node.
         return @tree.get_leaves(nil, filter_function)
      end
+     
+     def _to_output(output_map, compact, value_key)
+       
+       if compact
+         return @class_names.map {|name| output_map.fetch(name, 0.0).round(BigML::Util::PRECISION) }
+       else
+         output = []
+         @class_names.each do |name|
+           output << {'category' => name, 
+                      value_key =>  output_map.fetch(name, 0.0).round(BigML::Util::PRECISION)}
+         end
+         
+         return output               
+       end
+       
+     end
+     
+     def predict_confidence(input_data,
+                            missing_strategy=LAST_PREDICTION,
+                            compact=false)
+                            
+       # For classification models, Predicts a one-vs.-rest confidence value
+       # for each possible output class, based on input values.  This
+       # confidence value is a lower confidence bound on the predicted
+       # probability of the given class.  The input fields must be a
+       # dictionary keyed by field name for field ID.
+       # For regressions, the output is a single element list
+       # containing the prediction.
+       # :param input_data: Input data to be predicted
+       # :param missing_strategy: LAST_PREDICTION|PROPORTIONAL missing strategy
+       #                        for missing fields
+       # :param compact: If False, prediction is returned as a list of maps, one
+       #                 per class, with the keys "prediction" and "probability"
+       #                 mapped to the name of the class and it's probability,
+       #                respectively.  If True, returns a list of probabilities
+       #                 ordered by the sorted order of the class names.
+       #
+       
+       if @regression
+         prediction = self.predict(input_data,
+                                   {"missing_strategy" => missing_strategy,
+                                    "full" => !compact})
 
+         if compact
+            output = [prediction]
+         else
+            output = cast_prediction(prediction, DICTIONARY, true)
+         end
+         
+         return output
+         
+       elsif @regression 
+         raise ArgumentError.new("This method is available for non-boosting categorization models only.")
+       end                          
+
+       root_dist = @tree.distribution
+       category_map=root_dist.collect {|category| {category[0] => 0.0} }.reduce({}, :merge)
+       prediction = self.predict(input_data,
+                                 {"missing_strategy" => missing_strategy,
+                                  "full" => true})
+
+       distribution = prediction['distribution']
+
+       distribution.each do |class_info|
+         name = class_info[0]
+         category_map[name.to_s] = BigML::ws_confidence(name, distribution)
+       end 
+
+       return self._to_output(category_map, compact, "confidence")
+     
+     end
+     
+     def _laplacian_term()
+       # Correction term based on the training dataset distribution
+       #
+       root_dist = @tree.distribution
+       category_map={}
+       if @tree.weighted
+          root_dist.each do |category| 
+            category_map[category[0]] = 0.0
+          end
+       else
+         total = root_dist.map{|category| category[1]}.sum.to_f
+         root_dist.each do |category| 
+           category_map[category[0]] = category[1]/total
+         end
+       end 
+       
+       return category_map   
+     end
+     
+     def _probabilities(distribution)
+       # Computes the probability of a distribution using a Laplacian
+       # correction.
+       #
+       total =  @tree.weighted ? 0 : 1
+       category_map = {}
+       category_map.merge!(self._laplacian_term())
+
+       distribution.each do |class_info|
+         category_map[class_info[0]] += class_info[1]
+         total += class_info[1]
+       end
+       
+       category_map.each do|k,v|
+         category_map[k] /= total
+       end   
+       
+       return category_map
+
+     end
+     
+     def predict_probability(input_data, 
+                             missing_strategy=LAST_PREDICTION, 
+                             compact=false)
+                             
+       # For classification models, Predicts a probability for
+       # each possible output class, based on input values.  The input
+       # fields must be a dictionary keyed by field name for field ID.
+       # For regressions, the output is a single element list
+       # containing the prediction.
+       # :param input_data: Input data to be predicted
+       # :param missing_strategy: LAST_PREDICTION|PROPORTIONAL missing strategy
+       #                          for missing fields
+       # :param compact: If False, prediction is returned as a list of maps, one
+       #                 per class, with the keys "prediction" and "confidence"
+       #                 mapped to the name of the class and it's confidence,
+       #                 respectively.  If True, returns a list of confidences
+       #                 ordered by the sorted order of the class names.
+       #         
+        
+        if @regression or !@boosting.nil?
+          output = [self.predict(input_data, {"missing_strategy" => missing_strategy,
+                                              "full" => !compact})]
+          if compact
+            output = [prediction]
+          else
+            output = prediction
+          end    
+        else
+      
+          prediction = self.predict(input_data,
+                                    {"missing_strategy" => missing_strategy, 
+                                     "full" => true})
+                                     
+          category_map = self._probabilities(prediction['distribution'])
+   
+          output = self._to_output(category_map, compact, "probability")
+            
+        end
+        
+        return output    
+
+     end
+     
+     def predict_operating(input_data,
+                           missing_strategy=LAST_PREDICTION,
+                           operating_point=nil)
+                           
+         kind, threshold, positive_class = BigML::parse_operating_point(operating_point, 
+                                                                        OPERATING_POINT_KINDS, 
+                                                                        self.class_names)
+         if kind == "probability"
+           predictions = self.predict_probability(input_data,
+                                                  missing_strategy, false)
+         else
+           predictions = self.predict_confidence(input_data,
+                                                 missing_strategy, false)
+         end 
+                                              
+         position = self.class_names.index(positive_class)
+         if predictions[position][kind] > threshold
+             prediction = predictions[position]
+         else
+             # if the threshold is not met, the alternative class with
+             # highest probability or confidence is returned
+             
+             #prediction = predictions.sort_by {|a,b|   self._sort_predictions(a, b, kind)}[0..2]
+             prediction =  predictions.sort_by {|p| [-p[kind], p['category']]}[0..1]               
+             if prediction[0]["category"] == positive_class
+                 prediction = prediction[1]
+             else
+                 prediction = prediction[0]
+             end
+         end
+         prediction["prediction"] = prediction["category"]
+         prediction.delete("category")
+         return prediction
+     end
+     
+     def _sort_predictions(a, b, criteria)
+       # Sorts the categories in the predicted node according to the
+       # given criteria
+       #
+       if a[criteria] == b[criteria]
+          return sort_categories(a, b, self.objective_categories)
+       end
+       
+       return b[criteria] > a[criteria] ? 1 : -1
+     end
+     
+     def predict_operating_kind(input_data,
+                                missing_strategy=LAST_PREDICTION,
+                                operating_kind=None)
+       #Computes the prediction based on a user-given operating kind.
+       #
+       kind = operating_kind.downcase
+       if (!OPERATING_POINT_KINDS.include?(kind))
+           raise ArgumentError.new("Allowed operating kinds are %s. %s found." %
+                            [", ".join(OPERATING_POINT_KINDS), kind])
+       end
+       if kind == "probability"
+         predictions = self.predict_probability(input_data,
+                                                 missing_strategy, false)
+       else
+         predictions = self.predict_confidence(input_data,
+                                               missing_strategy, false)
+       end
+       
+       if self.regression
+         prediction = predictions
+       else
+         prediction = predictions.sort_by {|p| [-p[kind], p['category']]}[0]
+                               
+         prediction["prediction"] = prediction["category"]
+         prediction.delete("category")
+       end
+       
+       return prediction
+     end
+     
      def predict(input_data, options={})
         # Makes a prediction based on a number of field values.
 
-        # By default the input fields must be keyed by field name but you can use
-        # `by_name` to input them directly keyed by id.
-
-        # input_data: Input data to be predicted
-        # by_name: Boolean, true if input_data is keyed by names
-        # print_path: Boolean, if true the rules that lead to the prediction
-        #             are printed
-        # out: output handler
-        # with_confidence: Boolean, if true, all the information in the node
-        #                 (prediction, confidence, distribution and count)
-        #                 is returned in a list format
-        # missing_strategy: LAST_PREDICTION|PROPORTIONAL missing strategy for
+        # input_data: Input data to be predicted
+        # missing_strategy: LAST_PREDICTION|PROPORTIONAL missing strategy for
         #                  missing fields
-        # add_confidence: Boolean, if true adds confidence to the dict output
-        # add_path: Boolean, if true adds path to the dict output
-        # add_distribution: Boolean, if true adds distribution info to the
-        #                  dict output
-        # add_count: Boolean, if true adds the number of instances in the
-        #               node to the dict output
-        # add_median: Boolean, if true adds the median of the values in
-        #            the distribution
-        # add_next: Boolean, if true adds the field that determines next
-        #           split in the tree
-        # add_min: Boolean, if true adds the minimum value in the prediction's
-        #          distribution (for regressions only)
-        # add_max: Boolean, if true adds the maximum value in the prediction's
-        #         distribution (for regressions only)
-        # add_unused_fields: Boolean, if True adds the information about the
-        #           fields in the input_data that are not being used
-        #           in the model as predictors.
-        # multiple: For categorical fields, it will return the categories
-        #         in the distribution of the predicted node as a
-        #           list of dicts:
-        #            [{'prediction' => 'Iris-setosa',
-        #              'confidence' => 0.9154
-        #              'probability' => 0.97
-        #              'count' => 97},
-        #             {'prediction' => 'Iris-virginica',
-        #              'confidence' => 0.0103
-        #              'probability' => 0.03,
-        #              'count' => 3}]
-        #          The value of this argument can either be an integer
-        #          (maximum number of categories to be returned), or the
-        #          literal 'all', that will cause the entire distribution
-        #          in the node to be returned.
-        return _predict(input_data,
-	               options.key?("by_name") ? options["by_name"] : true,
-                       options.key?("print_path") ? options["print_path"] : false,
-		       options.key?("out") ? options["out"] : $STDOUT,
-		       options.key?("with_confidence") ? options["with_confidence"] : false,
-		       options.key?("missing_strategy") ? options["missing_strategy"] : LAST_PREDICTION,
-		       options.key?("add_confidence") ? options["add_confidence"] : false,
-		       options.key?("add_path") ? options["add_path"] : false,
-		       options.key?("add_distribution") ? options["add_distribution"] : false,
-		       options.key?("add_count") ? options["add_count"] : false,
-		       options.key?("add_median") ? options["add_median"] : false,
-                       options.key?("add_next") ? options["add_next"] : false,
-		       options.key?("add_min") ? options["add_min"] : false,
-		       options.key?("add_max") ? options["add_max"] : false,
-                       options.key?("add_unused_fields") ? options["add_unused_fields"] : false,
-		       options.key?("multiple") ? options["multiple"] :nil) 
-     end
-
-     def _predict(input_data, by_name=true,
-                print_path=false, out=$STDOUT, with_confidence=false,
-                missing_strategy=LAST_PREDICTION,
-                add_confidence=false,
-                add_path=false,
-                add_distribution=false,
-                add_count=false,
-                add_median=false,
-                add_next=false,
-                add_min=false,
-                add_max=false,
-                add_unused_fields=false,
-                multiple=nil)
-
-        # Makes a prediction based on a number of field values.
- 
-        # By default the input fields must be keyed by field name but you can use
-        # `by_name` to input them directly keyed by id.
-
-        # input_data: Input data to be predicted
-        # by_name: Boolean, true if input_data is keyed by names
-        # print_path: Boolean, if true the rules that lead to the prediction
-        #             are printed
-        # out: output handler
-        # with_confidence: Boolean, if true, all the information in the node
-        #                 (prediction, confidence, distribution and count)
-        #                 is returned in a list format
-        # missing_strategy: LAST_PREDICTION|PROPORTIONAL missing strategy for
-        #                  missing fields
-        # add_confidence: Boolean, if true adds confidence to the dict output
-        # add_path: Boolean, if true adds path to the dict output
-        # add_distribution: Boolean, if true adds distribution info to the
-        #                  dict output
-        # add_count: Boolean, if true adds the number of instances in the
-        #               node to the dict output
-        # add_median: Boolean, if true adds the median of the values in
-        #            the distribution
-        # add_next: Boolean, if true adds the field that determines next
-        #           split in the tree
-        # add_min: Boolean, if true adds the minimum value in the prediction's
-        #          distribution (for regressions only)
-        # add_max: Boolean, if true adds the maximum value in the prediction's
-        #         distribution (for regressions only)
-        # add_unused_fields: Boolean, if True adds the information about the
-        #           fields in the input_data that are not being used
-        #           in the model as predictors.
-        # multiple: For categorical fields, it will return the categories
-        #         in the distribution of the predicted node as a
-        #           list of dicts:
-        #            [{'prediction' => 'Iris-setosa',
-        #              'confidence' => 0.9154
-        #              'probability' => 0.97
-        #              'count' => 97},
-        #             {'prediction' => 'Iris-virginica',
-        #              'confidence' => 0.0103
-        #              'probability' => 0.03,
-        #              'count' => 3}]
-        #          The value of this argument can either be an integer
-        #          (maximum number of categories to be returned), or the
-        #          literal 'all', that will cause the entire distribution
-        #          in the node to be returned.
- 
-        # Checks if this is a regression model, using PROPORTIONAL
-        # missing_strategy
-        if (@tree.regression and missing_strategy == PROPORTIONAL and 
-                !@regression_ready)
-            raise ImportError "Failed to find the numpy and scipy libraries,
-                               needed to use proportional missing strategy
-                               for regressions. Please install them before
-                               using local predictions for the model."
-        end
-
+        # operating_point: In classification models, this is the point of the
+        #                 ROC curve where the model will be used at. The
+        #                 operating point can be defined in terms of:
+        #                 - the positive_class, the class that is important to
+        #                   predict accurately
+        #                 - the probability_threshold (or confidence_threshold),
+        #                   the probability (or confidence) that is stablished
+        #                   as minimum for the positive_class to be predicted.
+        #                 The operating_point is then defined as a map with
+        #                 two attributes, e.g.:
+        #                   {"positive_class": "Iris-setosa",
+        #                    "probability_threshold": 0.5}
+        #                 or
+        #                   {"positive_class": "Iris-setosa",
+        #                    "confidence_threshold": 0.5}
+        # operating_kind: "probability" or "confidence". Sets the
+        #                property that decides the prediction. Used only if
+        #                no operating_point is used
+        # full: Boolean that controls whether to include the prediction's
+        #      attributes. By default, only the prediction is produced. If set
+        #      to True, the rest of available information is added in a
+        #      dictionary format. The dictionary keys can be:
+        #          - prediction: the prediction value
+        #          - confidence: prediction's confidence
+        #          - probability: prediction's probability
+        #          - path: rules that lead to the prediction
+        #          - count: number of training instances supporting the
+        #                   prediction
+        #          - next: field to check in the next split
+        #          - min: minim value of the training instances in the
+        #                 predicted node
+        #          - max: maximum value of the training instances in the
+        #                 predicted node
+        #          - median: median of the values of the training instances
+        #                    in the predicted node
+        #          - unused_fields: list of fields in the input data that
+        #                           are not being used in the model
+        
         # Checks and cleans input_data leaving the fields used in the model
-        new_data = filter_input_data(input_data, by_name, add_unused_fields)
+        
 
-        if add_unused_fields
+        full = options.key?("full") ? options["full"] : false
+        missing_strategy = options.key?("missing_strategy") ? options["missing_strategy"] : LAST_PREDICTION
+        operating_point = options.key?("operating_point") ? options["operating_point"] : nil
+        operating_kind = options.key?("operating_kind") ? options["operating_kind"] : nil
+   
+        unused_fields = []
+        new_data = self.filter_input_data(input_data, full)
+        if full
           input_data, unused_fields = new_data
         else
           input_data = new_data
         end
-
+        
         # Strips affixes for numeric values and casts to the final field type
-        BigML::Util::cast(input_data, @fields)
+        BigML::Util::cast(input_data, self.fields)
+        
+        full_prediction = _predict(input_data,
+                                   missing_strategy,
+                                   operating_point,
+                                   operating_kind,
+                                   unused_fields) 
+
+        if full
+           
+           result = {}
+           full_prediction.each do |key,value|
+             if !value.nil?
+               result[key] = value
+             end 
+           end 
+           
+           return result
+      
+        end 
+         
+        return full_prediction['prediction']
+        
+     end
+                      
+     def _predict(input_data, missing_strategy=LAST_PREDICTION,
+                 operating_point=nil, operating_kind=nil, unused_fields=nil)
+        # Makes a prediction based on a number of field values.
+ 
+        # input_data: Input data to be predicted
+        # missing_strategy: LAST_PREDICTION|PROPORTIONAL missing strategy for
+        #                  missing fields
+        # operating_point: In classification models, this is the point of the
+        #                 ROC curve where the model will be used at. The
+        #                 operating point can be defined in terms of:
+        #                 - the positive_class, the class that is important to
+        #                   predict accurately
+        #                 - the probability_threshold (or confidence_threshold),
+        #                   the probability (or confidence) that is stablished
+        #                   as minimum for the positive_class to be predicted.
+        #                 The operating_point is then defined as a map with
+        #                 two attributes, e.g.:
+        #                   {"positive_class": "Iris-setosa",
+        #                    "probability_threshold": 0.5}
+        #                 or
+        #                   {"positive_class": "Iris-setosa",
+        #                    "confidence_threshold": 0.5}
+        # operating_kind: "probability" or "confidence". Sets the
+        #                property that decides the prediction. Used only if
+        #                no operating_point is used
+        # full: Boolean that controls whether to include the prediction's
+        #      attributes. By default, only the prediction is produced. If set
+        #      to True, the rest of available information is added in a
+        #      dictionary format. The dictionary keys can be:
+        #          - prediction: the prediction value
+        #          - confidence: prediction's confidence
+        #          - probability: prediction's probability
+        #          - path: rules that lead to the prediction
+        #          - count: number of training instances supporting the
+        #                   prediction
+        #          - next: field to check in the next split
+        #          - min: minim value of the training instances in the
+        #                 predicted node
+        #          - max: maximum value of the training instances in the
+        #                 predicted node
+        #          - median: median of the values of the training instances
+        #                    in the predicted node
+        #          - unused_fields: list of fields in the input data that
+        #                           are not being used in the model
+                                           
+        #
+        # Strips affixes for numeric values and casts to the final field type
+        #BigML::Util::cast(input_data, self.fields)
+        
+        # When operating_point is used, we need the probabilities
+        # (or confidences) of all possible classes to decide, so se use
+        # the `predict_probability` or `predict_confidence` methods
+        if !operating_point.nil?
+          if @regression
+            raise  ArgumentError.new("The operating_point argument can only be used in classifications.")
+          end
+          prediction = self.predict_operating(input_data, missing_strategy, operating_point)
+          return prediction
+        end  
+                                        
+        if !operating_kind.nil?
+          if @regression
+            raise  ArgumentError.new("The operating_kind argument can only be used in classifications.")
+          end
+          prediction = self.predict_operating_kind(input_data,
+                                                   missing_strategy,
+                                                   operating_kind)
+          return prediction
+          
+        end
+                        
+        if (@boosting.nil? and @regression and 
+             missing_strategy == PROPORTIONAL and !@regression_ready) 
+
+            raise ArgumentError.new("Failed,
+                               needed to use proportional missing strategy
+                               for regressions. Please install them before
+                               using local predictions for the model.")
+        end
+
         prediction = @tree.predict(input_data, nil,
                                    missing_strategy)
-        if print_path
-           out.puts '%s => %s ' % [' AND '.join(prediction.path), prediction["output"]]
+
+        if @boosting and missing_strategy == PROPORTIONAL
+           # output has to be recomputed and comes in a different format
+           g_sum, h_sum, population, path = prediction
+
+           prediction = BigML::Prediction.new(- g_sum / (h_sum +  @boosting.fetch("lambda", 1)),
+                                              path,nil,nil, population)
         end
-
-
-        output = prediction.output
-
-        if with_confidence
-            output = [prediction.output,
-                      prediction.confidence,
-                      prediction.distribution,
-                      prediction.count,
-                      prediction.median]
+        
+        result = prediction.instance_variables.each_with_object({}) { |var, result| result[var.to_s.delete("@")] = prediction.instance_variable_get(var) }
+        # changing key name to prediction
+        result['prediction'] = result['output']
+        result.delete("output")
+        
+        #next
+        field = prediction.children.size == 0 ? nil : prediction.children[0].predicate.field
+        
+        if !field.nil? and @fields.key?(field)
+          field = @fields[field]['name']
+        end 
+        
+        result['next'] = field
+        result.delete('children')
+        
+        
+        if @regression.nil? and @boosting.nil?
+          probabilities = self._probabilities(result['distribution'])
+          result['probability'] = probabilities[result['prediction']]
         end
-
-        if !multiple.nil? and !@tree.regression
-           output = []
-           total_instances = prediction.count.to_f
-           prediction.distribution.each_with_index do |data,index|
-              category=data[0]
-              instances=data[1]
-              if ((multiple.is_a?(String) and multiple == 'all') or 
-                  (multiple.is_a?(Integer) and index < multiple))
-         
-                  prediction_dict={'prediction' => category,
-                                   'confidence' => BigML::ws_confidence(category, prediction.distribution),
-                                   'probability' => instances/total_instances,
-                                   'count' => instances}
-                  output << prediction_dict
-              end              
- 
-           end
-        else
-           if (add_confidence or add_path or add_distribution or add_count or
-                    add_median or add_next or add_min or add_max or add_unused_fields)
-               output = {'prediction' => prediction.output}
-
-               if add_confidence
-                   output['confidence'] = prediction.confidence
-               end
-
-               if add_path
-                   output['path'] = prediction.path
-               end
-
-               if add_distribution
-                    output["distribution"] = prediction.distribution
-                    output["distribution_unit"] =  prediction.distribution_unit
-               end
-
-               if add_count
-                  output['count'] = prediction.count
-               end
-
-               if @tree.regression and add_median
-                  output['median'] = prediction.median
-               end
-
-               if add_next
-                   field = prediction.children.size == 0 ? nil : prediction.children[0].predicate.field 
-                   if !field.nil? and @fields.include?(field)
-                     field = @fields[field]['name']
-                   end
-                   output['next']=field
-               end
-
-               if @tree.regression and add_min
-                   output['min'] = prediction.min
-               end
-
-               if @tree.regression and add_max
-                 output['max'] = prediction.max
-               end
-
-               if add_unused_fields
-                  output['unused_fields'] = unused_fields
-               end
-           end
-        end
-
-        return output
+        
+        if unused_fields
+          result.merge!({'unused_fields' => unused_fields})
+        end  
+        
+        return result
      end
 
      def get_ids_path(filter_id)
@@ -388,7 +767,7 @@ module BigML
         ids_path = nil
         if !filter_id.nil? and !@tree.id.nil?
             if !@ids_map.include?(filter_id) 
-                raise ArgumentError "The given id does not exist."
+                raise ArgumentError.new("The given id does not exist.")
             else
                 ids_path = [filter_id]
                 last_id = filter_id
@@ -406,6 +785,9 @@ module BigML
         # Returns a IF-THEN rule set that implements the model.
         # `out` is file descriptor to write the rules.
         #
+        if @boosting
+          raise ArgumentError.new("This method is not available for boosting models.")
+        end
         ids_path = get_ids_path(filter_id)
         return @tree.rules(out, ids_path, subtree)
      end
@@ -424,7 +806,10 @@ module BigML
         #    - leaf predictions count
         #    - confidence
         #
-
+ 
+       if @boosting
+          raise ArgumentError.new("This method is not available for boosting models.")
+       end
        groups = {}
        tree = @tree
        distribution = tree.distribution
@@ -487,10 +872,10 @@ module BigML
                 end
                 return tree.count
             end
-        end
- 
-        depth_first_search(groups, tree, path)
-        return groups
+       end
+
+       depth_first_search(groups, tree, path)
+       return groups
 
      end
 
@@ -498,6 +883,11 @@ module BigML
        #
        # Returns training data distribution
        #
+
+       if @boosting
+          raise ArgumentError.new("This method is not available for boosting models.")
+       end
+
        tree = @tree
        distribution = tree.distribution
         
@@ -508,6 +898,10 @@ module BigML
        #
        # Returns model predicted distribution
        #
+       if @boosting
+          raise ArgumentError.new("This method is not available for boosting models.")
+       end
+
        if groups.nil?
             groups = group_prediction()
        end
@@ -523,6 +917,9 @@ module BigML
         #
         #Prints summary grouping distribution as class header and details
         #
+        if @boosting
+          raise ArgumentError.new("This method is not available for boosting models.")
+        end
         tree = @tree
 
         def extract_common_path(groups)
@@ -554,9 +951,9 @@ module BigML
                  groups[group]['details'] = details.sort_by {|x| -x[1]}
               end 
             end
-         end
+        end
 
-         def confidence_error(value, impurity=nil)
+        def confidence_error(value, impurity=nil)
             # Returns confidence for categoric objective fields
             #   and error for numeric objective fields
             #
@@ -575,27 +972,27 @@ module BigML
                 return " [Confidence: %.2f%%%s]" % [(value.round(4) * 100),
                                                      impurity_literal]
             end
-         end
+        end
 
-         distribution = get_data_distribution()
+        distribution = get_data_distribution()
 
-         out.puts "Data distribution:"
-         BigML::print_distribution(distribution, out)
-         out.puts
-         out.puts
+        out.puts "Data distribution:"
+        BigML::print_distribution(distribution, out)
+        out.puts
+        out.puts
 
-         groups = group_prediction()
-         predictions = get_prediction_distribution(groups)
+        groups = group_prediction()
+        predictions = get_prediction_distribution(groups)
 
-         out.puts "Predicted distribution:"
-         BigML::print_distribution(predictions, out)
-         out.puts 
-         out.puts
+        out.puts "Predicted distribution:"
+        BigML::print_distribution(predictions, out)
+        out.puts 
+        out.puts
 
-         if @field_importance
-            out.puts "Field importance:"
-            print_importance(out)
-         end
+        if @field_importance
+          out.puts "Field importance:"
+          print_importance(out)
+        end
 
         extract_common_path(groups)
         out.puts
@@ -652,7 +1049,7 @@ module BigML
                data_locale = @locale
             end
             datatype = @fields[objective_id]['datatype']
-            find_locale(data_locale)
+            BigML::Util::find_locale(data_locale)
 
             if ["double", "float"].include?(datatype)
                return value_as_string.to_f

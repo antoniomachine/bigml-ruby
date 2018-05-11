@@ -24,7 +24,7 @@ module BigML
  
      def initialize(output, path, confidence,
                     distribution=nil, count=nil, distribution_unit=nil,
-		    median=nil, children=nile, d_max=nil, d_min=nil)
+                    median=nil, children=nil, d_max=nil, d_min=nil)
 
         @output = output
         @path = path

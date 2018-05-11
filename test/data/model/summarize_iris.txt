@@ -33,3 +33,4 @@ Iris-virginica : (data 33.33% / prediction 33.33%) petal length > 2.45
     · 4.00%: 2.45 < petal length <= 4.85  and petal width > 1.75 and sepal width <= 3.1 [Confidence: 34.24%]
     · 2.00%: 2.45 < petal length <= 4.95  and 1.65 < petal width <= 1.75  [Confidence: 20.65%]
     · 2.00%: petal length > 5.45 and 1.55 < petal width <= 1.75  [Confidence: 20.65%]
+

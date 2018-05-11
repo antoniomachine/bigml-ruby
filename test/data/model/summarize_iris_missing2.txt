@@ -24,3 +24,4 @@ Iris-versicolor : (data 29.79% / prediction 29.79%) petal width > 0.7 and petal 
 
 
 Iris-virginica : (data 36.17% / prediction 36.17%) petal width > 0.7 and petal length > 4.75 [Confidence: 81.57%]
+

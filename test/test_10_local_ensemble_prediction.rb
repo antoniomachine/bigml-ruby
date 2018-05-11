@@ -5,7 +5,7 @@ require_relative "../lib/bigml/ensemble"
 class TestEnsemblePrediction < Test::Unit::TestCase
 
   def setup
-   @api = BigML::Api.new(nil, nil, true)
+   @api = BigML::Api.new
    @test_name=File.basename(__FILE__).gsub('.rb','')
    @api.delete_all_project_by_name(@test_name)
    @project = @api.create_project({'name' => @test_name})
@@ -17,14 +17,13 @@ class TestEnsemblePrediction < Test::Unit::TestCase
 
   # Scenario: Successfully creating a prediction:
   def test_scenario1
-    data = [[File.dirname(__FILE__)+'/data/iris.csv', 5, 1, {"petal width" => 0.5}, 'Iris-versicolor', 0.3687]]
+    data = [[File.dirname(__FILE__)+'/data/iris.csv', 5, 1, {"petal width" => 0.5}, 'Iris-versicolor', 0.415, [0.3403, 0.4150, 0.2447]]]
 
     puts  
     puts "Scenario: Successfully creating a local prediction from an Ensemble"
 
-    data.each do |filename, number_of_models, tlp, data_input, prediction_result, confidence|
+    data.each do |filename, number_of_models, tlp, data_input, prediction_result, confidence, probabilities_result|
        puts 
-       puts
        puts "Given I create a data source uploading a <%s> file" % filename
        source = @api.create_source(filename, {'name'=> 'source_test', 'project'=> @project["resource"]})
 
@@ -42,10 +41,12 @@ class TestEnsemblePrediction < Test::Unit::TestCase
        assert_equal(@api.ok(dataset), true)
 
        puts "And I create an ensemble of <%s> models and <%s> tlp" % [number_of_models, tlp]
-       ensemble=@api.create_ensemble(dataset, {"number_of_models" => number_of_models, 
-                                               "tlp" => tlp, 
-                                               "seed" => 'BigML', 
-                                               'sample_rate'=> 0.70})
+       
+       ensemble = @api.create_ensemble(dataset, {"number_of_models"=> number_of_models, 
+                                                 "seed" => 'BigML', 
+                                                 'ensemble_sample'=>{'rate' => 0.7, 
+                                                                     'seed' => 'BigML'}, 
+                                                 'missing_splits' => false})
        puts "And I wait until the ensemble is ready"
        assert_equal(BigML::HTTP_CREATED, ensemble["code"])
        assert_equal(1, ensemble["object"]["status"]["code"])
@@ -53,15 +54,22 @@ class TestEnsemblePrediction < Test::Unit::TestCase
 
        puts "And I create a local Ensemble"
        local_ensemble = BigML::Ensemble.new(ensemble, @api)
-       puts "When I create a local ensemble prediction with confidence for <%s>" % data_input
+       puts "When I create a local ensemble prediction with confidence for <%s>" % JSON.generate(data_input)
 
-       prediction = local_ensemble.predict(data_input, {'with_confidence' => true}) 
+       prediction = local_ensemble.predict(data_input, {'full' => true}) 
 
        puts "Then the local prediction is <%s>" % prediction_result
-       assert_equal(prediction_result, prediction[0])
+       assert_equal(prediction_result, prediction["prediction"])
 
        puts "And the local prediction's confidence is <%s>" % confidence
-       assert_equal(confidence, prediction[1].round(4))
+       assert_equal(confidence, prediction.key?("confidence") ? 
+                                    prediction["confidence"].round(4) : 
+                                    prediction["probability"].round(4))
+
+       probabilities = local_ensemble.predict_probability(data_input, BigML::LAST_PREDICTION, true)
+       
+       puts "And the local probabilities are <%s>" % JSON.generate(probabilities_result)
+       assert_equal(probabilities.map{|it| it.round(4)},probabilities_result.map{|it| it.round(4)})
 
     end
 
@@ -132,7 +140,7 @@ class TestEnsemblePrediction < Test::Unit::TestCase
   end
 
   def test_scenario3
-    data = [[File.dirname(__FILE__)+'/data/iris.csv', 5, 1, {"petal width" => 0.5}, 'Iris-versicolor', 0.3687]]
+    data = [[File.dirname(__FILE__)+'/data/iris.csv', 5, 1, {"petal width" => 0.5}, 'Iris-versicolor', 0.415]]
 
     puts
     puts "Scenario: Successfully creating a local prediction from an Ensemble adding confidence" 
@@ -157,10 +165,12 @@ class TestEnsemblePrediction < Test::Unit::TestCase
        assert_equal(@api.ok(dataset), true)
 
        puts "And I create an ensemble of <%s> models and <%s> tlp" % [number_of_models, tlp]
-       ensemble=@api.create_ensemble(dataset, {"number_of_models" => number_of_models, 
-                                               "tlp" => tlp, 
-                                               "seed" => 'BigML', 
-                                               'sample_rate'=> 0.70})
+       ensemble = @api.create_ensemble(dataset, {"number_of_models"=> number_of_models, 
+                                                 "seed" => 'BigML', 
+                                                 'ensemble_sample'=>{'rate' => 0.7, 
+                                                                     'seed' => 'BigML'}, 
+                                                 'missing_splits' => false})
+
        puts "And I wait until the ensemble is ready"
        assert_equal(BigML::HTTP_CREATED, ensemble["code"])
        assert_equal(1, ensemble["object"]["status"]["code"])
@@ -171,13 +181,14 @@ class TestEnsemblePrediction < Test::Unit::TestCase
 
        puts "When I create a local ensemble prediction for <%s> in JSON adding confidence" % JSON.generate(data_input)
 
-       prediction = local_ensemble.predict(data_input, {'add_confidence' => true})
+       prediction = local_ensemble.predict(data_input, {'full' => true})
 
        puts "Then the local prediction is <%s>" % prediction_result
        assert_equal(prediction_result, prediction['prediction'])
  
        puts "And the local prediction's confidence is <%s>" % confidence
-       assert_equal(confidence, prediction['confidence'].round(4))
+       assert_equal(confidence, prediction.key?("confidence") ? 
+                        prediction['confidence'].round(4) : prediction['probability'].round(4))
     end
 
   end
@@ -243,7 +254,7 @@ class TestEnsemblePrediction < Test::Unit::TestCase
   end
 
   def test_scenario5
-    data = [[File.dirname(__FILE__)+'/data/grades.csv', 2, 1, {}, 67.5]]
+    data = [[File.dirname(__FILE__)+'/data/grades.csv', 2, 1, {}, 69.0934]]
 
     puts
     puts "Scenario: Successfully creating a local prediction from an Ensemble" 
@@ -266,10 +277,12 @@ class TestEnsemblePrediction < Test::Unit::TestCase
        assert_equal(1, dataset["object"]["status"]["code"])
        assert_equal(@api.ok(dataset), true)
 
-       ensemble=@api.create_ensemble(dataset, {"number_of_models" => number_of_models, 
-                                               "tlp" => tlp, 
-                                               "seed" => 'BigML', 
-                                               'sample_rate'=> 0.70})
+       ensemble = @api.create_ensemble(dataset, {"number_of_models"=> number_of_models, 
+                                                 "seed" => 'BigML', 
+                                                 'ensemble_sample'=>{'rate' => 0.7, 
+                                                                     'seed' => 'BigML'}, 
+                                                 'missing_splits' => false})
+
        puts "And I wait until the ensemble is ready"
        assert_equal(BigML::HTTP_CREATED, ensemble["code"])
        assert_equal(1, ensemble["object"]["status"]["code"])
@@ -279,10 +292,10 @@ class TestEnsemblePrediction < Test::Unit::TestCase
        local_ensemble = BigML::Ensemble.new(ensemble, @api)
 
        puts "When I create a local ensemble prediction using median with confidence for <%s>" % data_input
-       prediction = local_ensemble.predict(data_input, {'with_confidence' => true, 'median' => true}) 
+       prediction = local_ensemble.predict(data_input, {'full' => true})
 
        puts "Then the local prediction is <%s>" % prediction_result
-       assert_equal(prediction_result, prediction[0].round(4))
+       assert_equal(prediction_result, prediction["prediction"].round(4))
 
     end
 

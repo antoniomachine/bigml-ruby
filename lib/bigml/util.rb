@@ -1,10 +1,22 @@
 require 'json'
 require 'active_support'
 require 'parsr'
+require_relative 'constants'
 
 module BigML
   class Util 
    PREDICTIONS_FILE_SUFFIX = '_predictions.csv'
+   
+   PROGRESS_BAR_WIDTH = 50
+
+   HTTP_INTERNAL_SERVER_ERROR = 500
+
+   PRECISION = 5
+   
+   DFT_STORAGE = "./storage"
+   
+   DFT_STORAGE_FILE = File.join(DFT_STORAGE, "BigML_%s.json")
+   
    class << self
 
      def is_url(urlString)
@@ -23,27 +35,75 @@ module BigML
                'object' => resource, 'error' => error}
 
      end
+     
+     def empty_resource()
+       #Creates an empty resource JSON structure
+       #
+       return resource_structure(HTTP_INTERNAL_SERVER_ERROR, 
+                                 nil, 
+                                 nil, 
+                                 nil,
+                                 {"status": {"code": HTTP_INTERNAL_SERVER_ERROR,
+                                             "message": "The resource couldn't be created"}})
+     end
+
+     def get_status(resource)
+       #Extracts status info if present or sets the default if public
+       if !resource.is_a?(Hash)
+         raise ArgumentError, "We need a complete resource to extract its status"
+       end
+
+       if resource.key?('object')
+         if resource['object'].nil?
+            raise ArgumentError, "The resource has no status info %s" % resource
+         end
+         resource = resource["object"]
+       end
+
+       if !resource.fetch("private", true) or resource.fetch("status", nil).nil?
+         status = {"code" => BigML::FINISHED}
+       else
+         status = resource["status"]
+       end
+
+       return status
+
+     end
 
      def maybe_save(resource_id, path, code=nil, location=nil, resource=nil, error=nil)
        # Builds the resource dict response and saves it if a path is provided.
        # The resource is saved in a local repo json file in the given path.
-       #
+       # Only final resources are stored. Final resources should be FINISHED or
+       # FAILED
        resource = resource_structure(code, resource_id, location, resource, error)
-       if (!path.nil? and !resource_id.nil?)
+  
+       if !resource_id.nil? 
+  
           begin
-            resource_json=JSON.generate(resource)
+             status = get_status(resource) 
           rescue
-             puts "The resource has an invalid JSON format"
+             status['code'] = nil
+          end     
+
+          if ([BigML::FINISHED, BigML::FAULTY].include?(status['code']) and
+             !path.nil?) 
+            begin
+              resource_json=JSON.generate(resource)
+            rescue
+              puts "The resource has an invalid JSON format"
+            end
+
+            begin
+              resource_file_name = File.join(path, resource_id.gsub('/','_'))
+              File.open(resource_file_name, "w:UTF-8") do |f|
+                 f.write resource_json
+              end
+            rescue IOError
+              puts "Failed writing resource to " + resource_file_name
+            end         
+ 
           end
 
-          begin
-            resource_file_name = File.join(path, resource_id.gsub('/','_'))
-            File.open(resource_file_name, "w:UTF-8") do |f|
-               f.write resource_json
-            end
-          rescue IOError
-             puts "Failed writing resource to " + resource_file_name
-          end          
        end
 
        return resource
@@ -138,12 +198,12 @@ module BigML
                  booleans[bool_key] = category
                end
                # converting boolean to the corresponding string
-               input_data[key] = booleans[str(value)]
-
+	       #
+               input_data[key] = booleans[value.to_s]
              rescue Exception
-                raise ArgumentError "Mismatch input data type in 
-                                     field \"%s\" for value %s. 
-                                     String expected" % [fields[key]['name'], value]
+	        raise ArgumentError.new("Mismatch input data type in 
+		                         field \"%s\" for value %s.
+					  String expected" % [fields[key]['name'], value])
              end
 
           elsif  ((fields[key]['optype'] == 'numeric' and
@@ -158,12 +218,12 @@ module BigML
                  end
  
               rescue Exception
-                 raise ArgumentError "Mismatch input data type in 
-                                        field %s for value %s. " % [fields[key]['name'], value]
+                 raise ArgumentError.new("Mismatch input data type in 
+                                         field %s for value %s. " % [fields[key]['name'], value])
               end
           elsif (fields[key]['optype'] == 'numeric' and !!value == value)
-             raise ArgumentError "Mismatch input data type in field
-                                     %s for value %s. Numeric expected." % [fields[key]['name'], value]
+             raise ArgumentError.new("Mismatch input data type in field
+                                     %s for value %s. Numeric expected." % [fields[key]['name'], value])
           end
 
        end
@@ -198,6 +258,77 @@ module BigML
 
        return name
      end
+
+     def plural(text, num)
+       # Pluralizer: adds "s" at the end of a string if a given number is > 1
+       return "%s%s" % [text, num > 1 ? "s" : ""]
+     end
+     
+     def localize(number)
+      #Localizes `number` to show commas appropriately.
+      return  number.to_s.reverse.gsub(/(\d{3})/,"\\1,").chomp(",").reverse
+     end
+     
+     def split(children)
+       # Returns the field that is used by the node to make a decision.
+       field = children.collect{|child| child.predicate.field }.uniq
+       if field.size == 1
+         return field[0]
+       end
+     end
+     
+     def find_locale(data_locale="UTF-8", verbose=false)
+        begin
+          encoding = Encoding.find(data_locale)
+          if encoding.nil? and !encoding.index(".").nil?
+             encoding = Encoding.find(data_locale.split(".")[-1])
+             if encoding.nil?
+                encoding = Encoding.find("UTF-8")
+             end
+             Encoding.default_external = encoding
+          end
+        rescue Exception
+          puts "Error find Locale"
+        end
+ 
+     end
+     
+     def is_status_final(resource)
+       # Try whether a resource is in a final state
+       begin
+         status = get_status(resource)
+       rescue
+         status['code'] = nil
+       end  
+       
+       return [BigML::FINISHED, BigML::FAULTY].include?(status['code'])
+     end 
+     
+     def save(resource, path)
+       # Stores the resource in the user-given path in a JSON format
+       # 
+       if path.nil?
+         datestamp = Time.now.strftime("%a%b%d%y_%H%M%S")
+         path = BigML::Util::DFT_STORAGE_FILE % datestamp
+       end 
+       
+       begin
+         File.open(path, "w:UTF-8") do |resource_file|
+            resource_json = JSON.generate(resource)
+            resource_file.write resource_json
+         end
+         return path
+       rescue IOError
+         puts "Failed writing resource to " + resource_file_name
+       end      
+     end 
+     
+     # markdown_cleanup
+     # prefix_as_comment
+     # clear_console_line
+     # reset_console_line
+     # console_log
+     # get_csv_delimiter
 
    end
   end

@@ -18,7 +18,7 @@ ham : (data 87.96% / prediction 87.96%) Message != 2p per min to call Germany 08
 
 
 spam : (data 12.04% / prediction 12.04%) 
-    · 1.27%: Message = u r subscribed 2 TEXTCOMP 250 wkly comp. 1st wk?s free question follows, subsequent wks charged@150p/msg.2 unsubscribe txt STOP 2 84128,custcare 08712405020 [Confidence: 20.65%]
+    · 1.27%: Message = 2p per min to call Germany 08448350055 from your BT line. Just 2p per min. Check PlanetTalkInstant.com for info & T's & C's. Text stop to opt out [Confidence: 20.65%]
     · 1.27%: Message = tddnewsletter@emc1.co.uk (More games from TheDailyDraw) Dear Helen, Dozens of Free Games - with great prizesWith.. [Confidence: 20.65%]
     · 1.27%: Message = money!!! you r a lucky winner ! 2 claim your prize text money 2 88600 over £1million to give away ! ppt150x3+normal text rate box403 w1t1jy [Confidence: 20.65%]
     · 1.27%: Message = http//tms. widelive.com/index. wml?id=820554ad0a1705572711&first=true¡C C Ringtone¡ [Confidence: 20.65%]
@@ -96,4 +96,5 @@ spam : (data 12.04% / prediction 12.04%)
     · 1.27%: Message = <Forwarded from 21870000>Hi - this is your Mailbox Messaging SMS alert. You have 4 messages. You have 21 matches. Please call back on 09056242159 to retrieve your messages and matches [Confidence: 20.65%]
     · 1.27%: Message = 88066 FROM 88066 LOST 3POUND HELP [Confidence: 20.65%]
     · 1.27%: Message = 500 New Mobiles from 2004, MUST GO! Txt: NOKIA to No: 89545 & collect yours today!From ONLY £1 www.4-tc.biz 2optout 087187262701.50gbp/mtmsg18 [Confidence: 20.65%]
-    · 1.27%: Message = 2p per min to call Germany 08448350055 from your BT line. Just 2p per min. Check PlanetTalkInstant.com for info & T's & C's. Text stop to opt out [Confidence: 20.65%]
+    · 1.27%: Message = u r subscribed 2 TEXTCOMP 250 wkly comp. 1st wk?s free question follows, subsequent wks charged@150p/msg.2 unsubscribe txt STOP 2 84128,custcare 08712405020 [Confidence: 20.65%]
+

@@ -18,46 +18,8 @@ require_relative 'api'
 
 module BigML
  
-  ONLY_MODEL = 'only_model=true;limit=-1;'
-  
-  
-   def self.retrieve_resource(api, resource_id, query_string='')
-     # Retrieves resource info either from a local repo or
-     # from the remote server 
-     if !api.storage.nil?
-        begin
-    
-            stored_resource = File.join(api.storage, resource_id.gsub('/','_'))
-            if File.exist?(stored_resource) 
-               f = File.open(stored_resource)
-               resource = f.read
-               begin
-                 resource = JSON.parse(resource)
-                 return resource
-               rescue Exception
-                 puts "The file %s contains no JSON" % stored_resource
-               end
-            end 
-        rescue IOError
-        end
-     end
-
-     api_getter =  api.method "get_%s" % BigML::get_resource_type(resource_id)
-
-     return BigML::check_resource(resource_id, api_getter, query_string)
-
-  end
-
-  def self.extract_objective(objective_field)
-    # Extract the objective field id from the model structure
-
-    if objective_field.is_a?(Array)
-        return objective_field[0]
-    end
-
-    return objective_field
-
-  end
+  #ONLY_MODEL = 'only_model=true;limit=-1;'
+  EXCLUDE_FIELDS = 'exclude=fields;' 
 
   def self.print_importance(instance, out=$STDOUT)
     # Print a field importance structure
@@ -81,7 +43,7 @@ module BigML
 
      attr_accessor :resource_id, :field_importance
 
-     def initialize(model, api=nil)
+     def initialize(model, api=nil, fields=nil)
         if BigML::check_model_structure(model)
             @resource_id = model['resource']
         else
@@ -96,7 +58,12 @@ module BigML
              raise Exception, api.error_message(model, 'model', 'get')
           end
 
-          query_string = BigML::ONLY_MODEL        
+          if !fields.nil? and fields.is_a?(Hash)
+            query_string = BigML::EXCLUDE_FIELDS
+          else
+            query_string = BigML::ONLY_MODEL
+          end
+ 
           model = BigML::retrieve_resource(api, @resource_id, query_string)
           # Stored copies of the model structure might lack some necessary
           # keys
@@ -110,9 +77,9 @@ module BigML
         end
 
         if model.key?('model') and model['model'].is_a?(Hash)
-            status = BigML::get_status(model)
+            status = BigML::Util::get_status(model)
             if status.key?('code') and status['code'] == BigML::FINISHED
-              if (model['model'].key?('model_fields') or model['model'].key?('fields') )
+              if (fields.nil? and (model['model'].key?('model_fields') or model['model'].key?('fields')) )
                  fields = model["model"].fetch('model_fields',  model['model'].fetch('fields', []))
                  # pagination or exclusion might cause a field not to
                  # be in available fields dict

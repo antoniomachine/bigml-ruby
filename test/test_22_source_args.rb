@@ -4,7 +4,7 @@ require "test/unit"
 class TestSourceArgs < Test::Unit::TestCase
 
   def setup
-   @api = BigML::Api.new(nil, nil, true)
+   @api = BigML::Api.new
    @test_name=File.basename(__FILE__).gsub('.rb','')
    @api.delete_all_project_by_name(@test_name)
    @project = @api.create_project({'name' => @test_name})
@@ -38,8 +38,6 @@ class TestSourceArgs < Test::Unit::TestCase
        assert_equal(@api.ok(source), true)
 
        puts "Then the source exists and has args #{JSON.generate(item['params'])}"
-       #source = @api.get_source(source)
-       #pp source
  
        item['params'].each do |param, value|
           assert_equal(source["object"][param], value)

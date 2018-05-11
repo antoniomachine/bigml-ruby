@@ -59,6 +59,14 @@ module BigML
          @top_anomalies = nil 
          @id_fields = []
 
+         # checks whether the information needed for local predictions is in
+	 # the first argument
+
+         if (anomaly.is_a?(Hash) and !BigML::check_model_fields(anomaly))
+            anomaly = BigML::get_anomaly_id(anomaly)
+            @resource_id = anomaly
+         end
+	 
          if !(anomaly.is_a?(Hash) and anomaly.include?('resource') and 
               !anomaly['resource'].nil?)
  
@@ -68,7 +76,7 @@ module BigML
 
             @resource_id = BigML::get_anomaly_id(anomaly)
             if @resource_id.nil?
-                raise Exception api.error_message(anomaly,
+                raise Exception, api.error_message(anomaly,
                                                   'anomaly',
                                                   'get')
             end
@@ -94,11 +102,11 @@ module BigML
                 anomaly['model']['top_anomalies'].is_a?(Array))
 
                 @mean_depth = anomaly['model'].fetch('mean_depth')
-                status = BigML::get_status(anomaly)
+                status = BigML::Util::get_status(anomaly)
                 if status.include?('code') and status['code'] == FINISHED
                    @expected_mean_depth = nil
                    if @mean_depth.nil? or @sample_size.nil?
-                       raise Exception "The anomaly data is not complete. 
+                       raise Exception, "The anomaly data is not complete. 
                                         Score will
                                         not be available"
                    else
@@ -116,10 +124,10 @@ module BigML
                    @top_anomalies = anomaly['model']['top_anomalies']
 
                 else
-                    raise Exception "The anomaly isn't finished yet"
+                    raise Exception, "The anomaly isn't finished yet"
                 end
             else
-              raise Exception "Cannot create the Anomaly instance. Could not
+              raise Exception, "Cannot create the Anomaly instance. Could not
                                find the 'top_anomalies' key in the
                                resource:\n\n%s" % anomaly['model'].keys
             end
@@ -128,7 +136,7 @@ module BigML
 
       end
 
-      def anomaly_score(input_data, by_name=true)
+      def anomaly_score(input_data)
         # Returns the anomaly score given by the iforest
 
         #   To produce an anomaly score, we evaluate each tree in the iforest
@@ -141,14 +149,14 @@ module BigML
         #   value between 0 and 1.
       
         # Checks and cleans input_data leaving the fields used in the model
-        input_data = filter_input_data(input_data, by_name)
+        input_data = filter_input_data(input_data)
 
         # Strips affixes for numeric values and casts to the final field type
         BigML::Util::cast(input_data, @fields)
 
         depth_sum = 0
         if @iforest.nil?
-            raise Exception "We could not find the iforest information to 
+            raise Exception, "We could not find the iforest information to 
                             compute the anomaly score. Please, rebuild your 
                             Anomaly object from a complete anomaly detector 
                             resource."

@@ -33,13 +33,49 @@ module BigML
     RUNNABLE => "RUNNABLE"
   }
 
+  def count(listing)
+    # Count of existing resources
+    if listing.key?('meta') and listing['meta'].key?('query_total')
+      return listing['meta']['query_total']
+    end
+  end
+
   class Api < ResourceHandler
 
      attr_reader :storage
-
+     # Initializes the BigML API.
+     
+     #   If left unspecified, `username` and `api_key` will default to the
+     #    values of the `BIGML_USERNAME` and `BIGML_API_KEY` environment
+     #    variables respectively.
+    
+     #    If `dev_mode` is set to `True`, the API will be used in development
+     #    mode where the size of your datasets are limited but you are not
+     #    charged any credits.
+      
+     #    If storage is set to a directory name, the resources obtained in
+     #    CRU operations will be stored in the given directory.
+     #   If domain is set, the api will point to the specified domain. Default
+     #    will be the one in the environment variable `BIGML_DOMAIN` or
+     #  `bigml.io` if missing. The expected domain argument is a string or a
+     #   Domain object. See Domain class for details.
+    
+     #    When project is set to a project ID,
+     #    the user is considered to be working in an
+     #    organization project. The scope of the API requests will be limited
+     #    to this project and permissions should be previously given by the
+     #    organization administrator.
+     
+     #    When organization is set to an organization ID,
+     #    the user is considered to be working for an
+     #    organization. The scope of the API requests will be limited to the
+     #    projects of the organization and permissions need to be previously
+     #    given by the organization administrator.
+     
      def initialize(username = nil, api_key = nil, dev_mode = false, 
-                    debug = false, set_locale = false, storage = nil, domain = nil)
-         super(username, api_key, dev_mode, debug, set_locale, storage, domain)
+                    debug = false, set_locale = false, storage = nil, domain = nil,
+                    project=nil, organization=nil)
+         super(username, api_key, dev_mode, debug, set_locale, storage, domain,project, organization)
          @source_url = @url + SOURCE_PATH
          @project_url = @url + PROJECT_PATH
          @dataset_url = @url + DATASET_PATH
@@ -63,8 +99,50 @@ module BigML
          @script_url = @url + SCRIPT_PATH
          @library_url = @url + LIBRARY_PATH
          @execution_url = @url + EXECUTION_PATH
-         @lda_url = @url + LDA_PATH
+         @topic_model_url = @url + TOPIC_MODEL_PATH
+         @topic_distribution_url = @url + TOPIC_DISTRIBUTION_PATH
+         @batch_topic_distribution_url = @url + BATCH_TOPIC_DISTRIBUTION_PATH
+         @time_series_url = @url + TIME_SERIES_PATH
+         @forecast_url = @url + FORECAST_PATH
+         @deepnet_url = @url + DEEPNET_PATH
+         @configuration_url = @url + CONFIGURATION_PATH
      end
+     
+     def connection_info()
+       # Printable string: domain where the connection is bound and the
+       # credentials used.
+       info = "Connecting to:\n"
+       info += "    %s\n" % self.general_domain
+       if @general_protocol != BigML::Domain::BIGML_PROTOCOL
+          info += "    using %s protocol\n" % @general_protocol
+       end
+       
+       info += "    SSL verification %s\n" % @verify ? "on" : "off"
+       if @debug
+         info += "    Debug on\n"
+       end
+       
+       if @general_domain != @prediction_domain
+         info += "    %s (predictions only)\n" % @prediction_domain
+         if self.prediction_protocol != BigML::Domain::BIGML_PROTOCOL
+            info += "    using %s protocol\n" % @prediction_protocol
+         end
+         
+         info += "    SSL verification %s\n" % @verify_prediction ? "on" : "off"
+
+       end 
+       
+       if !@project.blank? or !@organization.blank?
+         info += "    Scope info:%s\n                %s\n" % 
+                    [@organization.blank? ? "" : @organization, @project.blank? ? "" : @project]
+       end 
+       
+       info += "\nAuthentication string:\n"
+       info += "    %s\n" % self.auth[1..-1]
+       return info
+       
+     end 
+
 
      def get_fields(resource)
         # Retrieve fields used by a resource.
@@ -90,6 +168,12 @@ module BigML
                     return resource['object']['logistic_regression']['fields']
                 elsif ASSOCIATION_RE.match(resource_id)
                     return resource['object']['associations']['fields']
+                elsif TOPIC_MODEL_RE.match(resource_id)
+                    return resource['object']['topic_model']['fields']
+                elsif TIME_SERIES_RE.match(resource_id)
+                    return resource['object']['time_series']['fields']
+                elsif DEEPNET_RE.match(resource_id)
+                    return resource['object']['deepnet']['fields']
                 elsif SAMPLE_RE.match(resource_id)
                     dict = {}
                     resource['object']['sample']['fields'].each do |field|
@@ -142,7 +226,9 @@ module BigML
            if (SOURCE_RE.match(resource_id) or DATASET_RE.match(resource_id) or 
                MODEL_RE.match(resource_id) or EVALUATION_RE.match(resource_id) or
                ENSEMBLE_RE.match(resource_id) or CLUSTER_RE.match(resource_id) or
-               ANOMALY_RE.match(resource_id))
+               ANOMALY_RE.match(resource_id) or TOPIC_MODEL_RE.match(resource_id) or 
+	       LOGISTIC_REGRESSION_RE.match(resource_id) or TIME_SERIES_RE.match(resource_id) or
+	       DEEPNET_RE.match(resource_id))
 
               out.puts "%s (%s bytes)" % [resource['object']['name'], resource['object']['size']]
 
@@ -176,11 +262,11 @@ module BigML
         resource_id = BigML::get_resource_id(resource)
         unless resource_id.nil?
             resource = _get("%s%s" % [@url, resource_id])
-            status = BigML::get_status(resource)
+            status = BigML::Util::get_status(resource)
             code = status['code']
             return STATUSES.fetch(code, "UNKNOWN")
         else
-            status = BigML::get_status(resource)
+            status = BigML::Util::get_status(resource)
             if status['code'] != UPLOADING
                 puts "Wrong resource id"
                 return
@@ -188,7 +274,11 @@ module BigML
             return STATUSES[UPLOADING]
         end
      end
-
+     
+     def check_resource(resource, query_string='', wait_time=1)
+      # Check resource method.                                
+      return BigML::check_resource(resource,nil,query_string, wait_time, nil, false, self)
+     end
      ##########################################################################
      #
      # Sources
@@ -239,8 +329,8 @@ module BigML
         begin
            response = RestClient.post @source_url+@auth, create_args
         rescue RestClient::RequestTimeout
-           raise 'Request Timeout'
-        rescue RestClient::Exception => e
+           raise Exception, 'Request Timeout'
+        rescue RestClient::Exception
            code = HTTP_INTERNAL_SERVER_ERROR
            return Util::maybe_save(resource_id, @storage, code,
                              location, resource, error)
@@ -259,7 +349,7 @@ module BigML
         end
 
         return Util::maybe_save(resource_id, @storage, code, location, resource, error)
-      end
+     end
 
      def create_source(path=nil, args=nil, async=false,
                        progress_bar=false, out=$stdout)
@@ -615,14 +705,16 @@ module BigML
      ##########################################################################
 
      def create_prediction(model, input_data=nil,
-                           args=nil, wait_time=3, retries=10, by_name=true)
+                           args=nil, wait_time=3, retries=10)
        # Creates a new prediction.
        # The model parameter can be:
        # - a simple tree model
        # - a simple logistic regression model
        # - an ensemble
+       # - a deepnet
        # The by_name argument is now deprecated. It will be removed.
 
+       deepnet_id = nil
        logistic_regression_id = nil 
        ensemble_id = nil 
        model_id = nil
@@ -646,6 +738,12 @@ module BigML
           BigML::check_resource(logistic_regression_id, nil, BigML::TINY_RESOURCE,
                                 wait_time, retries,
                                 true, self)
+       
+       elsif resource_type == DEEPNET_PATH
+         deepnet_id = BigML::get_deepnet_id(model)
+         BigML::check_resource(deepnet_id, nil, BigML::TINY_RESOURCE,
+                               wait_time, retries,
+                               true, self)
        else
           raise Exception, "A model or ensemble id is needed to create a prediction "+resource_type + " found."
 
@@ -665,11 +763,13 @@ module BigML
           create_args["ensemble"] = ensemble_id
         elsif !logistic_regression_id.nil?
           create_args["logisticregression"] = logistic_regression_id
+        elsif !deepnet_id.nil?
+          create_args["deepnet"] = deepnet_id
         end
 
         body = JSON.generate(create_args)
 
-        return _create(@prediction_url, body)
+        return _create(@prediction_url, body, @verify)
 
      end
 
@@ -795,7 +895,7 @@ module BigML
         create_args["cluster"] = cluster_id
       
         body = JSON.generate(create_args)
-        return _create(@centroid_url, body)
+        return _create(@centroid_url, body, @verify)
      end
  
      def get_centroid(centroid,  query_string='')
@@ -1037,12 +1137,11 @@ module BigML
 
      def get_association(association, query_string='')
         #Retrieves a prediction
-
         BigML::check_resource_type(association, ASSOCIATION_PATH, "A association id is needed.")
         association_id = BigML::get_association_id(association)
 
-        unless luster_id.nil?
-          return _get(@url+predicion_id, query_string)
+        unless association_id.nil?
+          return _get(@url+association_id, query_string)
         end
      end
 
@@ -1094,7 +1193,7 @@ module BigML
           BigML::check_resource(association_id, nil,
                                 BigML::TINY_RESOURCE,
                                 wait_time, retries,
-                                true, api)
+                                true, self)
        else
            raise Exception, "A association id is needed to create an association set. "+ resource_type + " found."
        end
@@ -1102,7 +1201,7 @@ module BigML
        input_data = input_data.nil? ? {} : input_data.clone
        create_args = args.nil? ? {} : args
        create_args["input_data"] = input_data
-       create_args["association"] = anomaly_id
+       create_args["association"] = association_id
 
        body = JSON.generate(create_args)
        return _create(@association_set_url, body)
@@ -1115,8 +1214,8 @@ module BigML
         BigML::check_resource_type(association_set, ASSOCIATION_SET_PATH, "A association set id is needed.")
         association_set_id = BigML::get_association_set_id(association_set)
 
-        unless luster_id.nil?
-          return _get(@url+predicion_id, query_string)
+        unless association_set_id.nil?
+          return _get(@url+association_set_id, query_string)
         end
      end
 
@@ -1129,7 +1228,7 @@ module BigML
        # Updates a association_set.
        # Updates remote `association_set` with `changes'.
        BigML::check_resource_type(association_set, ASSOCIATION_SET_PATH, "A association set id is needed.")
-       association_id = BigML::get_association_set_id(association_set)
+       association_set_id = BigML::get_association_set_id(association_set)
        unless association_set_id.nil?
           return _update(@url+association_set_id, JSON.generate(changes))
        end
@@ -1157,7 +1256,7 @@ module BigML
        create_args = args.nil? ? {} : args.clone
 
        origin_resources_checked = check_origins(dataset, anomaly, create_args,
-                                                [BATCH_ANOMALY_SCORE_PATH], wait_time, retries) 
+                                                [ANOMALY_PATH], wait_time, retries) 
        if origin_resources_checked
           body = JSON.generate(create_args)
           return _create(@batch_anomaly_score_url, body)
@@ -1166,9 +1265,14 @@ module BigML
      end
 
      def download_batch_anomaly_score(batch_anomaly_score, filename=nil)
+        BigML::check_resource_type(batch_anomaly_score, BATCH_ANOMALY_SCORE_PATH, "A anomaly batch scoreid is needed.")
+        anomaly_batch_score_id = BigML::get_batch_anomaly_score_id(batch_anomaly_score)
+        unless anomaly_batch_score_id.nil?
+          return _download(@url+anomaly_batch_score_id+DOWNLOAD_DIR, filename)
+        end   
      end
 
-     def get_anomaly_batch_score(anomaly_batch_score, query_string='')
+     def get_batch_anomaly_score(anomaly_batch_score, query_string='')
         #Retrieves a anomaly batch score 
 
         BigML::check_resource_type(anomaly_batch_score, BATCH_ANOMALY_SCORE_PATH, "A anomaly batch score id is needed.")
@@ -1223,7 +1327,7 @@ module BigML
         end
      end
  
-     def get_batch_centroid(batch_centroid)
+     def get_batch_centroid(batch_centroid, query_string='')
        # Retrieves a batch centroid.
        BigML::check_resource_type(batch_centroid, BATCH_CENTROID_PATH, "A batch centroid id is needed.")
        batch_centroid_id = BigML::get_batch_centroid_id(batch_centroid)
@@ -1283,9 +1387,9 @@ module BigML
         # - a simple model
         # - an ensemble 
 
-        create_args = args.nil? ? {} : create_args.clone
+        create_args = args.nil? ? {} : args.clone
 
-        model_types = [ENSEMBLE_PATH, MODEL_PATH, LOGISTIC_REGRESSION_PATH]
+        model_types = [ENSEMBLE_PATH, MODEL_PATH, LOGISTIC_REGRESSION_PATH, DEEPNET_PATH]
         origin_resources_checked = check_origins(dataset, model, create_args, 
                                                  model_types,
                                                  wait_time, retries)
@@ -1296,7 +1400,7 @@ module BigML
 
      end
 
-     def get_batch_prediction(batch_prediction)
+     def get_batch_prediction(batch_prediction, query_string="")
         # Retrieves a batch prediction.
         BigML::check_resource_type(batch_prediction, BATCH_PREDICTION_PATH, "A batch prediction id is needed.")
         batch_prediction_id = BigML::get_batch_prediction_id(batch_prediction)
@@ -1413,7 +1517,8 @@ module BigML
         # Creates a new evaluation.
         create_args = args.nil? ? {} : args.clone
  
-        model_types = [ENSEMBLE_PATH, MODEL_PATH]
+        model_types = [ENSEMBLE_PATH, MODEL_PATH, LOGISTIC_REGRESSION_PATH, 
+                       TIME_SERIES_PATH, DEEPNET_PATH]
         origin_resources_checked = check_origins(dataset, model, create_args, 
                                                  model_types, wait_time, retries)
 
@@ -1527,7 +1632,7 @@ module BigML
                                    wait_time, retries,
                                    true, self)
         else
-            raise Exception "A dataset id is needed to create a sample. "+resource_type+ " found."
+            raise Exception, "A dataset id is needed to create a sample. "+resource_type+ " found."
         end
        
         create_args = args.nil? ? {}: args.clone
@@ -1588,7 +1693,7 @@ module BigML
                                  wait_time, retries,
                                  true, self)
         else
-            raise Exception "A dataset id is needed to create a statistical test. "+ resource_type +" found."
+            raise Exception, "A dataset id is needed to create a statistical test. %s found." % resource_type
         end
  
         create_args = args.nil? ? {} : args.clone
@@ -1889,7 +1994,7 @@ module BigML
      def create_project(args)
        # Creates a project.
        body=JSON.generate(args.nil? ? {} : args)
-       return _create(@project_url, body) 
+       return _create(@project_url, body, nil, true) 
        
      end
 
@@ -1905,13 +2010,13 @@ module BigML
         BigML::check_resource_type(project, PROJECT_PATH, "A project id is needed.")
         project_id = BigML::get_project_id(project)
         unless project_id.nil?
-          return _get(@url+project_id, query_string)
+          return _get(@url+project_id, query_string, nil, nil, true)
         end
      end 
      
      def list_projects(query_string='')
        # Lists all your remote projects.
-       return _list(@project_url, query_string)
+       return _list(@project_url, query_string, true)
      end
 
      def update_project(project, changes)
@@ -1920,7 +2025,7 @@ module BigML
        BigML::check_resource_type(project, PROJECT_PATH, "A project id is needed.")
        project_id = BigML::get_project_id(project)
        unless project_id.nil?
-          return _update(@url+project_id, JSON.generate(changes))
+          return _update(@url+project_id, JSON.generate(changes), true)
        end
      end
 
@@ -1929,7 +2034,7 @@ module BigML
        BigML::check_resource_type(project, PROJECT_PATH, "A project id is needed.")
        project_id = BigML::get_project_id(project)
        unless project_id.nil?
-          return _delete(@url+project_id)
+          return _delete(@url+project_id, '', true)
        end
      end
 
@@ -1944,71 +2049,492 @@ module BigML
 
      ##########################################################################
      #
-     #  LDAs REST calls 
-     #  https://bigml.com/developers/ldas
+     #  TopicModel's REST calls 
+     #  https://bigml.com/developers/topicmodels
      ##########################################################################
-     def create_lda(datasets, args=nil, wait_time=3, retries=10)
-       # Creates an LDA from a `dataset` or a list o `datasets`
+     def create_topic_model(datasets, args=nil, wait_time=3, retries=10)
+       # Creates an Topic Model from a `dataset` or a list o `datasets`
 
        create_args=_set_create_from_datasets_args(datasets,
                                                   args,
                                                   wait_time,
                                                   retries)
-       return _create(@lda_url, JSON.generate(create_args))
+       return _create(@topic_model_url, JSON.generate(create_args))
 
      end
 
-     def get_lda(lda, query_string='', shared_username=nil, shared_api_key=nil)
-        # Retrieves an LDA.
+     def get_topic_model(topic_model, query_string='', shared_username=nil, shared_api_key=nil)
+        # Retrieves an TOPIC MODEL.
 
-        # The lda parameter should be a string containing the
-        # LDA id or the dict returned by create_lda.
-        # As LDA is an evolving object that is processed
+        # The topic_model parameter should be a string containing the
+        # topic model id or the dict returned by create_topic_model.
+        # As topic model is an evolving object that is processed
         # until it reaches the FINISHED or FAULTY state, the function will
-        # return a dict that encloses the LDA values and state info
+        # return a dict that encloses the topic model values and state info
         # available at the time it is called.
 
-        # If this is a shared LDA, the username and sharing api key must
+        # If this is a shared topic model, the username and sharing api key must
         # also be provided.
  
-        BigML::check_resource_type(lda, LDA_PATH, "An LDA id is needed.")
-        lda_id = BigML::get_lda_id(lda)
-        unless lda_id.nil?
-          return _get(@url+lda_id, query_string, shared_username, shared_api_key)
+        BigML::check_resource_type(topic_model, TOPIC_MODEL_PATH, "An Topic Model id is needed.")
+        topic_model_id = BigML::get_topic_model_id(topic_model)
+        unless topic_model_id.nil?
+          return _get(@url+topic_model_id, query_string, shared_username, shared_api_key)
+        end
+     end
+     
+     def get_topicmodel(topic_model, query_string='', shared_username=nil, shared_api_key=nil)
+       self.get_topic_model(topic_model, query_string, shared_username, shared_api_key)
+     end  
+
+     def topic_model_is_ready(topic_model, args={})
+       #Check whether an Topic Model's  status is FINISHED.
+       BigML::check_resource_type(topic_model, TOPIC_MODEL_PATH, "An Topic Model id is needed.")
+       topic_model = get_topic_model(topic_model, args.fetch("query_string", nil),
+                         args.fetch("shared_username", nil),
+                         args.fetch("shared_api_key", nil))
+       return resource_is_ready(topic_model)
+     end
+
+     def list_topic_models(query_string='')
+       # Lists all your topic_model 
+       return _list(@topic_model_url, query_string)
+     end
+
+     def update_topic_model(topic_model, changes)
+       # Updates a Topic Model.
+       BigML::check_resource_type(topic_model, TOPIC_MODEL_PATH, "An Topic Model id is needed.")
+       topic_model_id = BigML::get_topic_model_id(topic_model)
+       unless topic_model_id.nil?
+          return _update(@url+topic_model_id, JSON.generate(changes))
+       end
+     end
+
+     def delete_topic_model(topic_model)
+       #Deletes a Topic Model.
+       BigML::check_resource_type(topic_model, TOPIC_MODEL_PATH, "An Topic Model id is needed.")
+       topic_model_id = BigML::get_topic_model_id(topic_model)
+       unless topic_model_id.nil?
+          return _delete(@url+topic_model_id)
+       end
+     end
+
+     ##########################################################################
+     #
+     #  topicdistributions' REST calls
+     #  https://bigml.com/developers/topic_distributions
+     ##########################################################################
+
+
+     def create_topic_distribution(topic_model, input_data=nil, args=nil, wait_time=3, retries=10)
+       # Creates a new topic distribution 
+
+       topic_model_id = BigML::get_topic_model_id(topic_model)
+       unless topic_model_id.nil?
+         BigML::check_resource(topic_model_id, nil, BigML::TINY_RESOURCE, 
+                               wait_time, retries, true, self)
+       else
+         resource_type = BigML::get_resource_type(model)
+         raise Exception, "A topic model id is needed to create a topic distribution. %s found" % resource_type
+       end
+
+       input_data = input_data.nil? ? {} : input_data
+       create_args = {}
+       unless args.nil?
+         create_args=args.clone
+       end
+
+       create_args["input_data"] = input_data
+       create_args["topicmodel"] = topic_model_id
+
+       body = JSON.generate(create_args)
+
+       return _create(@topic_distribution_url, body) 
+
+     end
+
+     def get_topic_distribution(topic_distribution, query_string='')
+        # Retrieves a topic distribution.
+
+        BigML::check_resource_type(topic_model, TOPIC_DISTRIBUTION_PATH, "An Topic Distribution id is needed.")
+        topic_distribution_id = BigML::get_topic_distribution_id(topic_distribution)
+        unless topic_distribution_id.nil?
+          return _get(@url+topic_distribution_id, query_string)
         end
      end
 
-     def lda_is_ready(lda, args={})
-       #Check whether an LDA's  status is FINISHED.
-       BigML::check_resource_type(lda, LDA_PATH, "An LDA id is needed.")
-       lda = get_lda(lda, args.fetch("query_string", nil),
+     def list_topic_distributions(query_string='')
+       # Lists all your topic distributions
+       return _list(@topic_distribution_url, query_string)
+     end
+
+     def update_topic_distribution(topic_distribution, changes)
+       # Updates a Topic Model.
+       BigML::check_resource_type(topic_distribution, TOPIC_DISTRIBUTION_PATH, "An Topic distribution id is needed.")
+       topic_model_id = BigML::get_topic_distribution_id(topic_model)
+       unless topic_model_id.nil?
+          return _update(@url+topic_model_id, JSON.generate(changes))
+       end
+     end
+
+     def delete_topic_distribution(topic_distribution)
+       #Deletes a Topic Distribution.
+       BigML::check_resource_type(topic_distribution, TOPIC_DISTRIBUTION_PATH, "An Topic Distribution id is needed.")
+       topic_distribution_id = BigML::get_topic_distribution_id(topic_distribution)
+       unless topic_distribution_id.nil?
+          return _delete(@url+topic_distribution_id)
+       end
+     end
+
+     ##########################################################################
+     #
+     #  topicdistributions' REST calls
+     #  https://bigml.com/developers/topic_distributions
+     ##########################################################################
+
+     def create_batch_topic_distribution(topic_model, dataset, args=nil, wait_time=3, retries=10)
+       # Creates a new batch topic distribution.
+       create_args = args.nil? ? {} : args.clone
+
+       origin_resources_checked = check_origins(dataset, topic_model, create_args,
+                                                [TOPIC_MODEL_PATH], wait_time, retries)
+       if origin_resources_checked
+          body = JSON.generate(create_args)
+          return _create(@batch_topic_distribution_url, body)
+       end
+     end    
+
+     def get_batch_topic_distribution(batch_topic_distribution, query_string='')
+        # Retrieves a batch topic distribution.
+
+        # the batch_topic_distribution parameter should be a string
+        # containing the batch_topic_distribution id or the dict
+        # returned by create_batch_topic_distribution.
+        # As batch_topic_distribution is an evolving object that is processed
+        # until it reaches the FINISHED or FAULTY state, the function will
+        # return a dict that encloses the batch_topic_distribution values
+        # and state info available at the time it is called.
+
+        BigML::check_resource_type(batch_topic_model, BATCH_TOPIC_DISTRIBUTION_PATH, "An Batch Topic Distribution id is needed.")
+        batch_topic_distribution_id = BigML::get_batch_topic_distribution_id(batch_topic_distribution)
+        unless batch_topic_distribution_id.nil?
+          return _get(@url+batch_topic_distribution_id, query_string)
+        end
+     end 
+
+     def download_batch_topic_distribution(batch_topic_distribution, filename=nil)
+        # Retrieves the batch topic distribution file
+        # Downloads topic distributions, that are stored in a remote CSV file.
+        # If a path is given in filename, the contents of the file are
+        # downloaded and saved locally. A file-like object is returned
+        # otherwise.
+
+        BigML::check_resource_type(batch_topic_distribution, BATCH_TOPIC_DISTRIBUTION_PATH, "A batch topic distribution id is needed.")
+
+        batch_topic_distribution_id = BigML::get_batch_topic_distribution_id(batch_topic_distribution)
+        unless batch_topic_distribution_id.nil?
+            return _download(@url+batch_topic_distribution_id+DOWNLOAD_DIR, filename)
+        end
+     end
+
+     def list_batch_topic_distributions(query_string='')
+       # Lists all your batch topic distributions
+       return _list(@topic_batch_distribution_url, query_string)
+     end
+
+     def update_batch_topic_distribution(batch_topic_distribution, changes)
+       # Updates a Topic Model.
+       BigML::check_resource_type(batch_topic_distribution, BATCH_TOPIC_DISTRIBUTION_PATH, "An Batch topic distribution id is needed.")
+       batch_topic_distribution_id = BigML::get_batch_topic_distribution_id(batch_topic_model)
+       unless batch_topic_distribution_id.nil?
+          return _update(@url+batch_topic_model_id, JSON.generate(changes))
+       end
+     end
+
+     def delete_batch_topic_distribution(batch_topic_distribution)
+       #Deletes a Batch Topic Distribution.
+       BigML::check_resource_type(batch_topic_distribution, BATCH_TOPIC_DISTRIBUTION_PATH, "An Batch topic Distribution id is needed.")
+       batch_topic_distribution_id = BigML::get_batch_topic_distribution_id(batch_topic_distribution)
+       unless batch_topic_distribution_id.nil?
+          return _delete(@url+batch_topic_distribution_id)
+       end
+     end
+
+     ##########################################################################
+     #
+     # timeseries 
+     # https://bigml.com/developers/timeseries
+     ##########################################################################
+     def create_time_series(datasets, args=nil, wait_time=3, retries=10)
+        #Creates a time series from a `dataset` or a list o `datasets`.
+
+        create_args = _set_create_from_datasets_args(datasets,args,
+                                                     wait_time, retries, nil)
+
+        body = JSON.generate(create_args)
+        return _create(@time_series_url, body)
+     end
+
+     def get_timeseries(time_series, query_string='',
+                     shared_username=nil, shared_api_key=nil)
+         return get_time_series(time_series, query_string='',
+                                shared_username=nil, shared_api_key=nil)
+     end
+     
+     def get_time_series(time_series, query_string='',
+                     shared_username=nil, shared_api_key=nil)
+        #Retrieves a time series
+
+        BigML::check_resource_type(time_series, TIME_SERIES_PATH, "A time series id is needed.")
+        time_series_id = BigML::get_time_series_id(time_series)
+
+        unless time_series_id.nil?
+          return _get(@url+time_series_id, query_string,
+                     shared_username, shared_api_key)
+        end
+     end
+
+     def time_series_is_ready(time_series, args={})
+       #Check whether a time series status is FINISHED.
+       BigML::check_resource_type(time_series, TIME_SERIES_PATH, "A time series id is needed.")
+       time_series = get_time_series(time_series, args.fetch("query_string", nil),
                          args.fetch("shared_username", nil),
                          args.fetch("shared_api_key", nil))
-       return resource_is_ready(lda)
+       return resource_is_ready(time_series)
      end
 
-     def list_ldas(query_string='')
-       # Lists all your ldas
-       return _list(@lda_url, query_string)
-     end
+     def list_time_series(query_string='')
+       # Lists all your time series
+       return _list(@time_series_url, query_string)
+     end 
 
-     def update_lda(lda, changes)
-       # Updates a LDA.
-       BigML::check_resource_type(lda, LDA_PATH, "An LDA id is needed.")
-       project_id = BigML::get_lda_id(lda)
-       unless lda_id.nil?
-          return _update(@url+lda_id, JSON.generate(changes))
+     def update_time_series(time_series, changes)
+       # Updates a time series.
+       # Updates remote `time series` with `changes'.
+       BigML::check_resource_type(time_series, TIME_SERIES_PATH, "A time series id is needed.")
+       time_series_id = BigML::get_time_series_id(time_series)
+       unless time_series_id.nil?
+          return _update(@url+time_series_id, JSON.generate(changes))
        end
      end
 
-     def delete_lda(lda)
-       #Deletes a LDA.
-       BigML::check_resource_type(lda, LDA_PATH, "An LDA id is needed.")
-       lda_id = BigML::get_lda_id(lda)
-       unless lda_id.nil?
-          return _delete(@url+lda_id)
+     def delete_time_series(time_series)
+       #Deletes a remote time series permanently.
+       BigML::check_resource_type(time_series, TIME_SERIES_PATH, "A time series id is needed.")
+       time_series_id = BigML::get_time_series_id(time_series)
+       unless time_series_id.nil?
+          return _delete(@url+time_series_id)
        end
+     end
+
+     ##########################################################################
+     #
+     # forecasts
+     # https://bigml.com/developers/forecasts
+     ##########################################################################
+
+     def create_forecast(time_series, input_data=nil,
+                         args=nil, wait_time=3, retries=10)
+        #Creates a new forecast.
+        time_series_id = BigML::get_time_series_id(time_series)
+        resource_type = BigML::get_resource_type(time_series_id)
+        if resource_type == TIME_SERIES_PATH and 
+            !time_series_id.nil?
+            BigML::check_resource(time_series_id, nil,
+                                  BigML::TINY_RESOURCE,
+                                  wait_time,retries,
+                                  true, self)
+        else
+            raise Exception, "A time series id is needed to create a forecast. "+resource_type + ". found"
+        end
+
+        input_data = input_data.nil? ? {} : input_data.clone
+        create_args = args.nil? ? {} : args
+        create_args["input_data"] = input_data
+        if !time_series_id.nil?
+          create_args["timeseries"] = time_series_id
+        end
+        
+        body = JSON.generate(create_args)
+        return _create(@forecast_url, body, @verify_prediction)
+     end
+
+
+
+     def get_forecast(forecast, query_string='')
+        #Retrieves a forecast
+
+        BigML::check_resource_type(forecast, FORECAST_PATH, "A forecast id is needed.")
+        forecast_id = BigML::get_forecast_id(forecast)
+
+        unless forecast_id.nil?
+          return _get(@url+forecast_id, query_string)
+        end
+     end
+
+     def list_forecast(query_string='')
+       # Lists all your forecast 
+       return _list(@forecast_url, query_string)
+     end
+
+     def update_forecast(forecast, changes)
+       # Updates a forecast 
+       # Updates remote `forecast` with `changes'.
+       BigML::check_resource_type(forecast, FORECAST_PATH, "A forecast id is needed.")
+       forecast_id = BigML::get_forecast_id(forecast)
+       unless forecast_id.nil?
+          return _update(@url+forecast_id, JSON.generate(changes))
+       end
+     end
+
+     def delete_forecast(forecast)
+       #Deletes a remote forecast permanently.
+       BigML::check_resource_type(forecast, FORECAST_PATH, "A forecast id is needed.")
+       forecast_id = BigML::get_forecast_id(forecast)
+       unless forecast_id.nil?
+          return _delete(@url+forecast_id)
+       end
+     end
+
+     ##########################################################################
+     #
+     # deepnets 
+     # https://bigml.com/developers/deepnets
+     ##########################################################################
+     def create_deepnets(datasets, args=nil, wait_time=3, retries=10)
+        #Creates a deepnet from a `dataset` or a list o `datasets`.
+
+        create_args = _set_create_from_datasets_args(datasets,args,
+                                                     wait_time, retries, nil)
+
+        body = JSON.generate(create_args)
+        return _create(@deepnet_url, body)
      end
  
+     def get_deepnet(deepnet, query_string='',
+                     shared_username=nil, shared_api_key=nil)
+        #Retrieves a deepnet
+        #  The model parameter should be a string containing the
+        #   deepnet id or the dict returned by
+        #   create_deepnet.
+        #   As a deepnet is an evolving object that is processed
+        #   until it reaches the FINISHED or FAULTY state, the function will
+        #   return a dict that encloses the deepnet
+        #   values and state info available at the time it is called.
+        #   If this is a shared deepnet, the username and
+        #   sharing api key must also be provided.
+
+        BigML::check_resource_type(deepnet, DEEPNET_PATH, "A deepnet id is needed.")
+        deepnet_id = BigML::get_deepnet_id(deepnet)
+
+        unless deepnet_id.nil?
+          return _get(@url+deepnet_id, query_string,
+                     shared_username, shared_api_key)
+        end
+     end
+
+     def deepnet_is_ready(deepnet, args={})
+       #Check whether a deepnet status is FINISHED.
+       BigML::check_resource_type(deepnet, DEEPNET_PATH, "A deepnet id is needed.")
+       deepnet = get_deepnet(deepnet, args.fetch("query_string", nil),
+                         args.fetch("shared_username", nil),
+                         args.fetch("shared_api_key", nil))
+       return resource_is_ready(deepnet)
+     end
+
+     def list_deepnets(query_string='')
+       # Lists all your deepnet 
+       return _list(@deepnet_url, query_string)
+     end
+
+     def update_deepnet(deepnet, changes)
+       # Updates a deepnet.
+       # Updates remote `deepnet` with `changes'.
+       BigML::check_resource_type(deepnet, DEEPNET_PATH, "A deepnet id is needed.")
+       deepnet_id = BigML::get_deepnet_id(time_series)
+       unless deepnet_id.nil?
+          return _update(@url+deepnet_id, JSON.generate(changes))
+       end
+     end
+
+     def delete_deepnet(deepnet)
+       #Deletes a remote deepnet permanently.
+       BigML::check_resource_type(deepnet, DEEPNET_PATH, "A deepnet id is needed.")
+       deepnet_id = BigML::get_deepnet_id(deepnet)
+       unless deepnet_id.nil?
+          return _delete(@url+deepnet_id)
+       end
+     end
+   
+     ##########################################################################
+     #
+     # deepnets 
+     # https://bigml.com/developers/configurations
+     ##########################################################################
+     
+     def create_configuration(configurations, args=nil, wait_time=3, retries=10)
+        #Creates a configuratoin from a `configurations` dictionary
+
+        if !configurations.is_a?(Hash)
+          raise ArgumentError, "Failed to find a configuration dictionary as first argument."
+        end
+          
+        if args.nil?
+          args = {}
+        end
+        create_args = {"configurations": configurations}.merge(args) 
+          
+        body = JSON.generate(create_args)
+        return _create(@configuration_url, body)
+     end
+    
+     def get_configuration(configuration, query_string='')
+       
+        #Retrieves a configuration
+        #  The configuration parameter should be a string containing the
+        #   configuration id or the dict returned by create_configuration.
+      
+        BigML::check_resource_type(configuration, CONFIGURATION_PATH, "A configuration id is needed.")
+        configuration_id = BigML::get_configuration_id(configuration)
+
+        unless configuration_id.nil?
+          return _get(@url+configuration_id, query_string)
+        end
+     end
+
+     def list_configurations(query_string='')
+       # Lists all your configurations 
+       return _list(@configuration_url, query_string)
+     end
+     
+     def update_configuration(configuration, changes)
+       # Updates a configuration
+       BigML::check_resource_type(configuration, CONFIGURATION_PATH, "A configurations id is needed.")
+       configuration_id = BigML::get_configuration_id(configuration)
+       unless configuration_id.nil?
+          return _update(@url+configuration_id, JSON.generate(changes))
+       end
+     end
+     
+     def delete_configuration(configuration)
+       #Deletes a remote configuration permanently.
+       BigML::check_resource_type(configuration, CONFIGURATION_PATH, "A configuration id is needed.")
+       configuration_id = BigML::get_configuration_id(configuration)
+       unless configuration_id.nil?
+          return _delete(@url+configuration_id)
+       end
+     end
+     
+     def source_from_batch_prediction(batch_prediction, args=nil)
+       # Creates a source from a batch prediction using the download url
+        BigML::check_resource_type(batch_prediction, BATCH_PREDICTION_PATH, "A batch prediction id is needed.")
+        batch_prediction_id = BigML::get_batch_prediction_id(batch_prediction)
+     
+        if batch_prediction_id
+          download_url = "%s%s%s%s" % [@url, batch_prediction_id, DOWNLOAD_DIR, @auth]
+          return _create_remote_source(download_url, args)
+        end 
+     end  
+   
   end
 end  

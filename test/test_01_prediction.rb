@@ -206,5 +206,45 @@ class TestPredicction < Test::Unit::TestCase
     end
   end
 
+  # Scenario: Successfully creating an Topic Model 
+  def test_scenario7
+
+    data = [[File.dirname(__FILE__)+'/data/movies.csv', {"fields" => {"000007" => {"optype" => "items", "item_analysis" => {"separator" => "$"}}, "000006" => {"optype"=> "text"}}}]]
+    puts
+    puts "Scenario: Successfully creating an Topic Model"
+
+    data.each do |filename, params|
+       puts "Given I create a data source uploading a %s file" % filename
+       source = @api.create_source(filename, {'name'=> 'source_test', 'project'=> @project["resource"]})
+
+       puts "And I wait until the source is ready"
+       assert_equal(BigML::HTTP_CREATED, source["code"])
+       assert_equal(1, source["object"]["status"]["code"])
+       assert_equal(@api.ok(source), true) 
+
+       puts "And I update the source with params <%s>" % JSON.generate(params)
+       source = @api.update_source(source, params)
+       assert_equal(BigML::HTTP_ACCEPTED, source["code"])
+       assert_equal(@api.ok(source), true)
+
+       puts "And I create dataset"
+       dataset=@api.create_dataset(source)
+    
+       puts "And I wait until the dataset is ready"
+       assert_equal(BigML::HTTP_CREATED, dataset["code"])
+       assert_equal(1, dataset["object"]["status"]["code"])
+       assert_equal(@api.ok(dataset), true)
+
+       puts "When I create an topic model from a dataset"
+       lda = @api.create_topic_model(dataset)
+       puts "Then I wait until the topic model is ready"
+       assert_equal(BigML::HTTP_CREATED, lda["code"])
+       assert_equal(1, lda["object"]["status"]["code"])
+       assert_equal(@api.ok(lda), true)
+
+    end 
+
+  end
+
 end
 

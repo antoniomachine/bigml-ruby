@@ -6,4 +6,7 @@
 /doc/
 /pkg/
 /spec/reports/
+/storage
 /tmp/
+/test/tmp/
+/test/storage/

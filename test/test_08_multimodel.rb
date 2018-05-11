@@ -5,7 +5,7 @@ require_relative "../lib/bigml/multimodel"
 class TestMultimodel < Test::Unit::TestCase
 
   def setup
-   @api = BigML::Api.new(nil, nil, true)
+   @api = BigML::Api.new
    @test_name=File.basename(__FILE__).gsub('.rb','')
    @api.delete_all_project_by_name(@test_name)
    @project = @api.create_project({'name' => @test_name})
@@ -69,7 +69,7 @@ class TestMultimodel < Test::Unit::TestCase
   end
 
   def test_scenario2
-    data = [[File.dirname(__FILE__)+'/data/grades.csv', {"Tutorial" => 99.47, "Midterm" => 53.12, "TakeHome" => 87.96}, 50]]
+    data = [[File.dirname(__FILE__)+'/data/grades.csv', {"Tutorial" => 99.47, "Midterm" => 53.12, "TakeHome" => 87.96}, 63.33]]
 
     puts   
     puts "Successfully creating a model from a dataset list and predicting with it using median"
@@ -101,12 +101,12 @@ class TestMultimodel < Test::Unit::TestCase
        assert_equal(@api.ok(model), true)       
 
        model_array = [model["resource"]]
-
        puts "I create a local multi model"
        local_multimodel = BigML::MultiModel.new(model_array, @api)
 
        puts "When I create a local multimodel batch prediction using median for %s" % JSON.generate(input_data)
-       batch_predict = local_multimodel.batch_predict([input_data], nil, true, false, BigML::LAST_PREDICTION, nil, false, true)
+       batch_predict = local_multimodel.batch_predict([input_data], nil, false,  
+                                                      BigML::LAST_PREDICTION, nil, false, true)
 
        puts "Then the local prediction is %s" % prediction
        assert_equal(batch_predict[0].predictions[0]['prediction'], prediction)

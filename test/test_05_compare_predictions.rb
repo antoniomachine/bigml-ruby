@@ -4,6 +4,7 @@ require_relative "../lib/bigml/model"
 require_relative "../lib/bigml/cluster"
 require_relative "../lib/bigml/anomaly"
 require_relative "../lib/bigml/logistic"
+require_relative "../lib/bigml/supervised"
 
 class TestComparePrediction < Test::Unit::TestCase
   
@@ -109,8 +110,8 @@ class TestComparePrediction < Test::Unit::TestCase
              "objective" => "000000",
              "prediction" => "ham"},
             {"filename" => File.dirname(__FILE__)+"/data/spam.csv",
-             "options" => {"fields" => {"000001" => {"optype" => "text", "term_analysis" => {"case_sensitive"=> false, "stem_words" => false, "use_stopwords" => true, "language" => "en"}}}},
-             "data_input" => {"Message" => "A mobile call"},
+             "options" => {"fields" => {"000001" => {"optype" => "text", "term_analysis" => {"case_sensitive"=> false, "stem_words" => true, "use_stopwords" => true, "language" => "en"}}}},
+             "data_input" => {"Message" => "mobile call"},
              "objective" => "000000",
              "prediction" => "spam"},
             {"filename" => File.dirname(__FILE__)+"/data/spam.csv",
@@ -207,13 +208,13 @@ class TestComparePrediction < Test::Unit::TestCase
            {'filename' => File.dirname(__FILE__)+'/data/grades.csv', 
             'data_input' => {"Midterm" => 20}, 
             'objective' => '000005',
-            'prediction' => 46.69889, 
-            'confidence' => 37.27594297134128},
+            'prediction' => 40.46667, 
+            'confidence' => 54.89713},
            {'filename' => File.dirname(__FILE__)+'/data/grades.csv', 
             'data_input' => {"Midterm" => 20, "Tutorial" => 90, "TakeHome" => 100}, 
             'objective' => '000005', 
             'prediction' => 28.06,
-            'confidence' => 24.86634}
+            'confidence' => 25.65806}
           ]
     puts
     puts "Scenario: Successfully comparing predictions with proportional missing strategy"
@@ -245,7 +246,7 @@ class TestComparePrediction < Test::Unit::TestCase
         assert_equal(@api.ok(model), true) 
 
         puts "And I create a local model "
-        local_model = BigML::Model.new(model["resource"], @api)        
+        local_model = BigML::Model.new(model["resource"], @api) 
 
         puts "When I create a proportional missing strategy prediction for <%s>" % JSON.generate(item["data_input"])
         prediction = @api.create_prediction(model, item["data_input"], {"missing_strategy" => 1})
@@ -256,143 +257,30 @@ class TestComparePrediction < Test::Unit::TestCase
 
         puts "And I create a proportional missing strategy local prediction for <%s>" % JSON.generate(item["data_input"])
 
-        local_prediction = local_model.predict(item["data_input"], {'with_confidence' => true, 
+        local_prediction = local_model.predict(item["data_input"], {'full' => true, 
                                                                     'missing_strategy' => BigML::PROPORTIONAL}) 
-
+        
+        if local_prediction.is_a?(Array)
+          prediction_value = local_prediction[0]
+        elsif local_prediction.is_a?(Hash)
+          prediction_value = local_prediction['prediction']
+        else
+          prediction_value = local_prediction
+        end
+     
         puts "Then the local prediction is <%s>" % item["prediction"]
         if item["prediction"].is_a?(Numeric)
-           assert_equal(local_prediction[0].round(4), item["prediction"].round(4))
+           assert_equal(prediction_value.round(4), item["prediction"].round(4))
         else
-           assert_equal(local_prediction[0], item["prediction"])
+           assert_equal(prediction_value, item["prediction"])
         end
         puts "And the local prediction's confidence is <%s>" % item["confidence"]
-        assert_equal(local_prediction[1].round(3), item["confidence"].round(3))
+        assert_equal(local_prediction["confidence"].round(3), item["confidence"].round(3))
  
     end
   end
 
   def test_scenario4
-    data = [
-           ['data/spam.csv', {"fields"=> {"000001"=> {"optype": "text", "term_analysis"=> {"case_sensitive"=> true, "stem_words"=> true, "use_stopwords"=> false, "language"=> "en"}}}}, {"Type"=> "ham", "Message"=> "Mobile call"}, 'Cluster 1', 0.5],
-           ['data/spam.csv', {"fields" => {"000001" => {"optype" => "text", "term_analysis" => {"case_sensitive" => true, "stem_words" => true, "use_stopwords" => false}}}}, {"Type" => "ham", "Message" => "A normal message"}, 'Cluster 1', 0.5],
-           ['data/spam.csv', {"fields": {"000001"=> {"optype"=> "text", "term_analysis"=> {"case_sensitive"=> false, "stem_words"=> false, "use_stopwords"=> false, "language"=> "en"}}}}, {"Type"=> "ham", "Message"=> "Mobile calls"}, 'Cluster 0', 0.5],
-           ['data/spam.csv', {"fields"=> {"000001"=> {"optype"=> "text", "term_analysis"=> {"case_sensitive"=> false, "stem_words"=> false, "use_stopwords"=> false, "language"=> "en"}}}}, {"Type"=> "ham", "Message"=> "A normal message"}, 'Cluster 0', 0.5],
-           ['data/spam.csv', {"fields"=> {"000001"=> {"optype"=> "text", "term_analysis"=> {"case_sensitive"=> false, "stem_words"=> true, "use_stopwords"=> true, "language"=> "en"}}}}, {"Type"=> "ham", "Message"=> "Mobile call"}, 'Cluster 5', 0.41161165235168157],
-           ['data/spam.csv', {"fields"=> {"000001"=> {"optype"=> "text", "term_analysis"=> {"case_sensitive"=> false, "stem_words"=> true, "use_stopwords"=> true, "language"=> "en"}}}}, {"Type"=> "ham", "Message"=> "A normal message"}, 'Cluster 1', 0.35566243270259357],
-           ['data/spam.csv', {"fields"=> {"000001"=> {"optype"=> "text", "term_analysis"=> {"token_mode"=> "full_terms_only", "language"=> "en"}}}}, {"Type"=> "ham", "Message"=> "FREE for 1st week! No1 Nokia tone 4 ur mob every week just txt NOKIA to 87077 Get txting and tell ur mates. zed POBox 36504 W45WQ norm150p/tone 16+"}, 'Cluster 0', 0.5],
-           ['data/spam.csv', {"fields"=> {"000001"=> {"optype"=> "text", "term_analysis"=> {"token_mode"=> "full_terms_only", "language"=> "en"}}}}, {"Type"=> "ham", "Message"=> "Ok"}, 'Cluster 0', 0.478833312167],
-           ['data/spam.csv', {"fields"=> {"000001"=> {"optype"=> "text", "term_analysis"=> {"case_sensitive"=> true, "stem_words"=> true, "use_stopwords"=> false, "language"=> "en"}}}}, {"Type"=> "", "Message"=> ""}, 'Cluster 0', 0.707106781187],
-           ['data/diabetes.csv', {"fields"=> {}}, {"pregnancies"=> 0, "plasma glucose"=> 118, "blood pressure"=> 84, "triceps skin thickness"=> 47, "insulin"=> 230, "bmi"=> 45.8, "diabetes pedigree"=> 0.551, "age"=> 31, "diabetes"=> true}, 'Cluster 3', 0.5033378686559257],
-           ['data/iris_sp_chars.csv', {"fields"=> {}}, {"pétal.length"=>1, "pétal&width\u0000"=> 2, "sépal.length"=>1, "sépal&width"=> 2, "spécies"=> "Iris-setosa"}, 'Cluster 7', 0.8752380218327035],
-           ['data/movies.csv', {"fields"=> {"000007"=> {"optype"=> "items", "item_analysis"=> {"separator"=> "$"}}}}, {"gender"=> "Female", "age_range"=> "18-24", "genres"=> "Adventure$Action", "timestamp"=> 993906291, "occupation"=> "K-12 student", "zipcode"=> 59583, "rating"=> 3}, 'Cluster 1', 0.7294650227133437]
-           ]
-
-    puts
-    puts "Scenario: Successfully comparing centroids with or without text options:"
-    data.each do |filename, options, data_input, centroid_name, distance|
-        puts 
-        puts "Given I create a data source uploading a <%s> file" % filename
-        source = @api.create_source(File.dirname(__FILE__)+"/"+filename, {'name'=> 'source_test', 'project'=> @project["resource"]})
-
-        puts "And I wait until the source is ready"
-        assert_equal(BigML::HTTP_CREATED, source["code"])
-        assert_equal(1, source["object"]["status"]["code"])
-        assert_equal(@api.ok(source), true)
-
-        puts "And I update the source with params <%s>" % JSON.generate(options)
-        source = @api.update_source(source, options)
-        assert_equal(BigML::HTTP_ACCEPTED, source["code"])
-        assert_equal(@api.ok(source), true)
-
-        puts "And I create a dataset"
-        dataset=@api.create_dataset(source)
-
-        puts "And I wait until the dataset is ready"
-        assert_equal(BigML::HTTP_CREATED, dataset["code"])
-        assert_equal(1, dataset["object"]["status"]["code"])
-        assert_equal(@api.ok(dataset), true)
-
-        puts "And I create a cluster"
-        cluster=@api.create_cluster(dataset, {'seed'=>'BigML tests','cluster_seed'=> 'BigML', 'k' => 8})
- 
-        puts "And I wait until the cluster is ready"
-        assert_equal(BigML::HTTP_CREATED, cluster["code"])
-        assert_equal(1, cluster["object"]["status"]["code"])
-        assert_equal(@api.ok(cluster), true)
- 
-        puts "And I create a local cluster"
-        local_cluster = BigML::Cluster.new(cluster["resource"], @api) 
-
-        puts "When I create a centroid for <%s>" % JSON.generate(data_input)
-        centroid = @api.create_centroid(cluster, data_input)
-
-        puts "Then the centroid is <%s> with distance <%s>" % [centroid_name, distance]
-        assert_equal(distance.round(6), centroid["object"]["distance"].round(6))
-        assert_equal(centroid_name, centroid["object"]["centroid_name"])
-
-        puts "And I create a local centroid for <%s>" % JSON.generate(data_input)
-        local_centroid = local_cluster.centroid(data_input)
-
-        puts "Then the local centroid is <%s> with distance <%s>" % [centroid_name,  distance]
-        assert_equal(centroid_name, local_centroid["centroid_name"]) 
-        assert_equal(distance.round(6), local_centroid["distance"].round(6))
-
-    end 
-  end
-
-  def test_scenario5
-     data = [[File.dirname(__FILE__)+'/data/iris.csv',{"summary_fields" => ["sepal width"], 'seed'=>'BigML tests','cluster_seed'=> 'BigML', 'k' => 8}, {"petal length" => 1, "petal width" => 1, "sepal length" => 1, "species" => "Iris-setosa"}, 'Cluster 2', 1.1643644909783857]]
-
-     puts
-     puts "Scenario: Successfully comparing centroids with summary fields:"
-
-     data.each do |filename, options, data_input, centroid_name, distance|
-        puts
-        puts "Given I create a data source uploading a <%s> file" % filename
-        source = @api.create_source(filename, {'name'=> 'source_test', 'project'=> @project["resource"]})
-
-        puts "And I wait until the source is ready"
-        assert_equal(BigML::HTTP_CREATED, source["code"])
-        assert_equal(1, source["object"]["status"]["code"])
-        assert_equal(@api.ok(source), true)
-
-        puts "And I create a dataset"
-        dataset=@api.create_dataset(source)
-
-        puts "And I wait until the dataset is ready"
-        assert_equal(BigML::HTTP_CREATED, dataset["code"])
-        assert_equal(1, dataset["object"]["status"]["code"])
-        assert_equal(@api.ok(dataset), true)
-
-        puts "And I create a cluster with options %s " % JSON.generate(options)
-        cluster=@api.create_cluster(dataset, options)
-
-        puts "And I wait until the cluster is ready"
-        assert_equal(BigML::HTTP_CREATED, cluster["code"])
-        assert_equal(1, cluster["object"]["status"]["code"])
-        assert_equal(@api.ok(cluster), true)       
-
-        puts "And I create a local cluster"
-        local_cluster = BigML::Cluster.new(cluster["resource"], @api) 
-
-        puts "When I create a centroid for <%s>" % JSON.generate(data_input)
-        centroid = @api.create_centroid(cluster, data_input)
-
-        puts "Then the centroid is <%s> with distance <%s>" % [centroid_name, distance]
-        assert_equal(distance.round(6), centroid["object"]["distance"].round(6))
-        assert_equal(centroid_name, centroid["object"]["centroid_name"])
-
-        puts "And I create a local centroid for <%s>" % JSON.generate(data_input)
-        local_centroid = local_cluster.centroid(data_input)
-
-        puts "Then the local centroid is <%s> with distance <%s>" % [centroid_name,  distance]
-        assert_equal(centroid_name, local_centroid["centroid_name"]) 
-        assert_equal(distance.round(6), local_centroid["distance"].round(6)) 
- 
-     end
-  end
-
-  def test_scenario6
      data = [[File.dirname(__FILE__)+'/data/iris_missing2.csv', {"petal width" => 1}, '000004', 'Iris-setosa', 0.8064],
              [File.dirname(__FILE__)+'/data/iris_missing2.csv', {"petal width" => 1, "petal length"=> 4}, '000004', 'Iris-versicolor', 0.7847]]
 
@@ -442,78 +330,29 @@ class TestComparePrediction < Test::Unit::TestCase
 
         puts "And I create a proportional missing strategy local prediction for <%s>" % JSON.generate(data_input)
 
-        local_prediction = local_model.predict(data_input, {'with_confidence' => true, 
-                                              'missing_strategy' => BigML::PROPORTIONAL})
+        local_prediction = local_model.predict(data_input, {'full' => true, 
+                                                            'missing_strategy' => BigML::PROPORTIONAL})
 
         puts "Then the local prediction is <%s>" % prediction_value
 
         if prediction_value.is_a?(Numeric)
-           assert_equal(local_prediction[0].round(4), prediction_value.round(4))
+           assert_equal(local_prediction["prediction"].round(4), prediction_value.round(4))
         else
-           assert_equal(local_prediction[0], prediction_value)
+           assert_equal(local_prediction["prediction"], prediction_value)
         end
 
         puts "And the local prediction's confidence is <%s>" % confidence
-        assert_equal(local_prediction[1].round(3), confidence.round(3))
+        assert_equal(local_prediction["confidence"].round(3), confidence.round(3))
      end
   end
 
-  def test_scenario7
-     data = [[File.dirname(__FILE__)+'/data/tiny_kdd.csv', {"000020" => 255.0, "000004" => 183.0, "000016" => 4.0, "000024" => 0.04, "000025" => 0.01, "000026" => 0.0, "000019" => 0.25, "000017" => 4.0, "000018" => 0.25, "00001e" => 0.0, "000005" => 8654.0, "000009" => "0", "000023" => 0.01, "00001f" => 123.0}, 0.69802]]
-     puts
-     puts "Scenario: Successfully comparing scores from anomaly detectors"
-
-     data.each do |filename, data_input, score|
-        puts
-        puts "Given I create a data source uploading a <%s> file" % filename
-        source = @api.create_source(filename, {'name'=> 'source_test', 'project'=> @project["resource"]})
-
-        puts "And I wait until the source is ready"
-        assert_equal(BigML::HTTP_CREATED, source["code"])
-        assert_equal(1, source["object"]["status"]["code"])
-        assert_equal(@api.ok(source), true)
-
-        puts "And I create a dataset"
-        dataset=@api.create_dataset(source)
-
-        puts "And I wait until the dataset is ready"
-        assert_equal(BigML::HTTP_CREATED, dataset["code"])
-        assert_equal(1, dataset["object"]["status"]["code"])
-        assert_equal(@api.ok(dataset), true)
-
-        puts "And I create an anomaly detector"
-        anomaly = @api.create_anomaly(dataset)
-
-        puts "And I wait until the anomaly detector is ready"
-        assert_equal(BigML::HTTP_CREATED, anomaly["code"])
-        assert_equal(1, anomaly["object"]["status"]["code"])
-        assert_equal(@api.ok(anomaly), true)
-
-        puts "And I create a local anomaly detector"
-        anomaly_local = BigML::Anomaly.new(anomaly, @api)
-
-        puts "When I create an anomaly score for <%s>" % JSON.generate(data_input)
-        anomaly_score = @api.create_anomaly_score(anomaly, data_input)
-        assert_equal(BigML::HTTP_CREATED, anomaly_score["code"])          
-
-        puts "Then the anomaly score is <score>" % score
-        assert_equal(score.round(5), anomaly_score["object"]["score"].round(5))
-
-        puts "And I create a local anomaly score for <%s>" % JSON.generate(data_input)
-        local_anomaly_score = anomaly_local.anomaly_score(data_input, false)
-
-        puts "Then the local anomaly score is <score>" % score
-        assert_equal(score.round(5), local_anomaly_score.round(5))
-     end
-  end
-
-  def test_scenario8
-     data = [['data/iris.csv',{"petal width" => 0.5, "petal length" => 0.5, "sepal width" => 0.5, "sepal length" => 0.5}, 'Iris-virginica'],
-             ['data/iris.csv',{"petal width" => 2, "petal length" => 6, "sepal width" => 0.5, "sepal length" => 0.5}, 'Iris-virginica'],
-             ['data/iris.csv',{"petal width" => 1.5, "petal length" => 4, "sepal width" => 0.5, "sepal length" => 0.5}, 'Iris-virginica'],
-             ['data/iris.csv',{"petal length" => 1}, 'Iris-virginica'],
-             ['data/iris_sp_chars.csv', {"pétal.length" => 4, "pétal&width\u0000" => 1.5, "sépal&width" => 0.5, "sépal.length" => 0.5}, 'Iris-virginica'],
-             ['data/price.csv', {"Price" => 1200}, 'Product2']
+  def test_scenario5
+     data = [['data/iris.csv',{"petal width" => 0.5, "petal length" => 0.5, "sepal width" => 0.5, "sepal length" => 0.5}, 'Iris-versicolor'],
+             ['data/iris.csv',{"petal width" => 2, "petal length" => 6, "sepal width" => 0.5, "sepal length" => 0.5}, 'Iris-versicolor'],
+             ['data/iris.csv',{"petal width" => 1.5, "petal length" => 4, "sepal width" => 0.5, "sepal length" => 0.5}, 'Iris-versicolor'],
+             ['data/iris.csv',{"petal length" => 1}, 'Iris-setosa'],
+             ['data/iris_sp_chars.csv', {"pétal.length" => 4, "pétal&width\u0000" => 1.5, "sépal&width" => 0.5, "sépal.length" => 0.5}, 'Iris-versicolor'],
+             ['data/price.csv', {"Price" => 1200}, 'Product1']
             ]
      puts
      puts "Scenario: Successfully comparing logistic regression predictions"
@@ -554,7 +393,7 @@ class TestComparePrediction < Test::Unit::TestCase
         assert_equal(prediction_result, prediction["object"]["output"])
 
         puts "And I create a local logistic regression prediction for <%s>" % JSON.generate(data_input)
-        local_prediction = localLogisticRegression.predict(data_input)
+        local_prediction = localLogisticRegression.predict(data_input, {"full" => true})
 
         puts "Then the local logistic regression prediction is <%s>" % prediction_result
         assert_equal(prediction_result, local_prediction["prediction"])
@@ -562,14 +401,14 @@ class TestComparePrediction < Test::Unit::TestCase
      end
   end
 
-  def test_scenario9
-     data = [['data/spam.csv', {"fields" => {"000001" => {"optype" => "text", "term_analysis" => {"case_sensitive" => true, "stem_words" => true, "use_stopwords" => false, "language" => "en"}}}}, {"Message" => "Mobile call"}, 'spam'],
-             ['data/spam.csv', {"fields" => {"000001" => {"optype" => "text", "term_analysis" => {"case_sensitive" => true, "stem_words" => true, "use_stopwords"=> false, "language"=> "en"}}}}, {"Message"=> "A normal message"}, 'spam'],
-             ['data/spam.csv', {"fields"=> {"000001"=> {"optype"=> "text", "term_analysis"=> {"case_sensitive"=> false, "stem_words"=> false, "use_stopwords"=> false, "language"=> "en"}}}}, {"Message"=> "Mobile calls"}, 'spam'],
+  def test_scenario6
+     data = [['data/spam.csv', {"fields" => {"000001" => {"optype" => "text", "term_analysis" => {"case_sensitive" => true, "stem_words" => true, "use_stopwords" => false, "language" => "en"}}}}, {"Message" => "Mobile call"}, 'ham'],
+             ['data/spam.csv', {"fields" => {"000001" => {"optype" => "text", "term_analysis" => {"case_sensitive" => true, "stem_words" => true, "use_stopwords"=> false, "language"=> "en"}}}}, {"Message"=> "A normal message"}, 'ham'],
+             ['data/spam.csv', {"fields"=> {"000001"=> {"optype"=> "text", "term_analysis"=> {"case_sensitive"=> false, "stem_words"=> false, "use_stopwords"=> false, "language"=> "en"}}}}, {"Message"=> "Mobile calls"}, 'ham'],
              ['data/spam.csv', {"fields"=> {"000001"=> {"optype"=> "text", "term_analysis"=> {"case_sensitive"=> false, "stem_words"=> false, "use_stopwords"=> false, "language"=> "en"}}}}, {"Message"=> "A normal message"}, 'ham'],
-             ['data/spam.csv', {"fields"=> {"000001"=> {"optype"=> "text", "term_analysis"=> {"case_sensitive"=> false, "stem_words"=> true, "use_stopwords"=> true, "language"=> "en"}}}}, {"Message"=> "Mobile call"}, 'spam'],
-             ['data/spam.csv', {"fields"=> {"000001"=> {"optype"=> "text", "term_analysis"=> {"case_sensitive"=> false, "stem_words"=> true, "use_stopwords"=> true, "language"=> "en"}}}}, {"Message"=> "A normal message"}, 'spam'],
-             ['data/spam.csv', {"fields"=> {"000001"=> {"optype"=> "text", "term_analysis"=> {"token_mode"=> "full_terms_only", "language"=> "en"}}}}, {"Message"=> "FREE for 1st week! No1 Nokia tone 4 ur mob every week just txt NOKIA to 87077 Get txting and tell ur mates. zed POBox 36504 W45WQ norm150p/tone 16+"}, 'spam'],
+             ['data/spam.csv', {"fields"=> {"000001"=> {"optype"=> "text", "term_analysis"=> {"case_sensitive"=> false, "stem_words"=> true, "use_stopwords"=> true, "language"=> "en"}}}}, {"Message"=> "Mobile call"}, 'ham'],
+             ['data/spam.csv', {"fields"=> {"000001"=> {"optype"=> "text", "term_analysis"=> {"case_sensitive"=> false, "stem_words"=> true, "use_stopwords"=> true, "language"=> "en"}}}}, {"Message"=> "A normal message"}, 'ham'],
+             ['data/spam.csv', {"fields"=> {"000001"=> {"optype"=> "text", "term_analysis"=> {"token_mode"=> "full_terms_only", "language"=> "en"}}}}, {"Message"=> "FREE for 1st week! No1 Nokia tone 4 ur mob every week just txt NOKIA to 87077 Get txting and tell ur mates. zed POBox 36504 W45WQ norm150p/tone 16+"}, 'ham'],
              ['data/spam.csv', {"fields"=> {"000001"=> {"optype"=> "text", "term_analysis"=> {"token_mode"=> "full_terms_only", "language"=> "en"}}}}, {"Message"=> "Ok"}, 'ham']
 ]
 
@@ -616,7 +455,7 @@ class TestComparePrediction < Test::Unit::TestCase
         assert_equal(prediction_result, prediction["object"]["output"])
 
         puts "And I create a local logistic regression prediction for <%s>" % JSON.generate(data_input)
-        local_prediction = localLogisticRegression.predict(data_input)
+        local_prediction = localLogisticRegression.predict(data_input, {"full" => true})
 
         puts "Then the local logistic regression prediction is <%s>" % prediction_result
         assert_equal(prediction_result, local_prediction["prediction"])
@@ -624,13 +463,12 @@ class TestComparePrediction < Test::Unit::TestCase
      end
   end
 
-  def test_scenario10
+  def test_scenario7
      data = [
-            ['data/spam.csv', {"fields" => {"000001" => {"optype" => "text", "term_analysis" => {"token_mode" => "full_terms_only", "language" => "en"}}}}, {"Message" => "A normal message"}, 'ham', 0.7645, "000000"],
-            ['data/spam.csv', {"fields" => {"000001" => {"optype" => "text", "term_analysis" => {"token_mode" => "all", "language" => "en"}}}}, {"Message" => "mobile"}, 'spam', 0.7174, "000000"],
-            ['data/movies.csv', {"fields" => {"000007" => {"optype" => "items", "item_analysis" => {"separator" => "$"}}}}, {"gender" => "Female", "genres" => "Adventure$Action", "timestamp" => 993906291, "occupation" => "K-12 student", "zipcode" => 59583, "rating" => 3}, '25-34', 0.4135, '000002']
+            ['data/spam.csv', {"fields" => {"000001" => {"optype" => "text", "term_analysis" => {"token_mode" => "full_terms_only", "language" => "en"}}}}, {"Message" => "A normal message"}, 'ham', 0.9169, "000000"],
+            #['data/spam.csv', {"fields" => {"000001" => {"optype" => "text", "term_analysis" => {"token_mode" => "all", "language" => "en"}}}}, {"Message" => "mobile"}, 'ham', 0.815, "000000"],
+            ['data/movies.csv', {"fields" => {"000007" => {"optype" => "items", "item_analysis" => {"separator" => "$"}}}}, {"gender" => "Female", "genres" => "Adventure$Action", "timestamp" => 993906291, "occupation" => "K-12 student", "zipcode" => 59583, "rating" => 3}, 'Under 18', 0.8393, '000002']
             ]
-
      puts ""
      puts "Scenario: Successfully comparing predictions with text options"
 
@@ -678,13 +516,13 @@ class TestComparePrediction < Test::Unit::TestCase
 
         prediction["object"]["probabilities"].each do |prediction_value, remote_probability|
            if prediction_value == prediction["object"]["output"]
-              assert_equal(remote_probability.to_f.round(2),probability.round(2))
+              assert_equal(remote_probability.to_f.round(3),probability.round(3))
               break
            end
         end
 
         puts "And I create a local logistic regression prediction for <%s>" % JSON.generate(data_input)
-        local_prediction = localLogisticRegression.predict(data_input)
+        local_prediction = localLogisticRegression.predict(data_input, {"full" => true})
 
         puts "Then the local logistic regression prediction is <%s>" % prediction_result
         assert_equal(prediction_result, local_prediction["prediction"])
@@ -695,7 +533,7 @@ class TestComparePrediction < Test::Unit::TestCase
      end
   end
 
-  def test_scenario11
+  def test_scenario8
      data = [
              ['data/text_missing.csv', {"fields" => {"000001" => {"optype" => "text", "term_analysis" => {"token_mode" => "all", "language" => "en"}}, "000000" => {"optype" => "text", "term_analysis" => {"token_mode" => "all", "language" => "en"}}}}, {}, "000003",'swap'],
              ['data/text_missing.csv', {"fields" => {"000001" => {"optype" => "text", "term_analysis" => {"token_mode" => "all", "language" => "en"}}, "000000" => {"optype" => "text", "term_analysis" => {"token_mode" => "all", "language" => "en"}}}}, {"category1" => "a"}, "000003",'paperwork']
@@ -748,20 +586,20 @@ class TestComparePrediction < Test::Unit::TestCase
 
         puts "And I create a proportional missing strategy local prediction for <%s>" % JSON.generate(data_input)
 
-        local_prediction = local_model.predict(data_input, {'with_confidence' => true,
+        local_prediction = local_model.predict(data_input, {'full' => true,
                                                             'missing_strategy' => BigML::PROPORTIONAL})
-
         puts "Then the local prediction is <%s>" % prediction_result
-        assert_equal(prediction_result, local_prediction[0])
+        assert_equal(prediction_result, local_prediction["prediction"])
 
      end
   end
 
-  def test_scenario12
+  def test_scenario9
      data = [
-            ['data/iris.csv', {"fields" => {"000000" => {"optype" => "categorical"}}}, {"species" => "Iris-setosa"}, 5.0, 0.02857, "000000", {"field_codings" => [{"field" => "species", "coding" => "dummy", "dummy_class" => "Iris-setosa"}]}],
-            ['data/iris.csv', {"fields" => {"000000" => {"optype" => "categorical"}}}, {"species" => "Iris-setosa"}, 5.5, 0.04293, "000000", {"field_codings" => [{"field" => "species", "coding" => "contrast", "coefficients" => [[1, 2, -1, -2]]}]}],
-            ['data/iris.csv', {"fields" => {"000000" => {"optype" => "categorical"}}}, {"species" => "Iris-setosa"}, 5.5, 0.04293, "000000", {"field_codings" => [{"field" => "species", "coding" => "other", "coefficients" => [[1, 2, -1, -2]]}]}]
+            ['data/iris.csv', {"fields" => {"000000" => {"optype" => "categorical"}}}, {"species" => "Iris-setosa"}, 5.0, 0.0394, "000000", {"field_codings" => [{"field" => "species", "coding" => "dummy", "dummy_class" => "Iris-setosa"}]}],
+            ['data/iris.csv', {"fields" => {"000000" => {"optype" => "categorical"}}}, {"species" => "Iris-setosa"}, 5.0, 0.051, "000000", {"balance_fields" => false, "field_codings" => [{"field" => "species", "coding" => "contrast", "coefficients" => [[1, 2, -1, -2]]}]}],
+            ['data/iris.csv', {"fields" => {"000000" => {"optype" => "categorical"}}}, {"species" => "Iris-setosa"}, 5.0, 0.051, "000000", {"balance_fields" => false, "field_codings" => [{"field" => "species", "coding" => "other", "coefficients" => [[1, 2, -1, -2]]}]}],
+	          ['data/iris.csv', {"fields" => {"000000" => {"optype" => "categorical"}}}, {"species" => "Iris-setosa"}, 5.0, 0.0417, "000000", {"bias" => false}],
             ]
 
      puts
@@ -797,7 +635,7 @@ class TestComparePrediction < Test::Unit::TestCase
         puts "And I wait until the logistic regression model is ready"
         assert_equal(BigML::HTTP_CREATED, logistic_regression["code"])
         assert_equal(@api.ok(logistic_regression), true)
-
+        
         puts "And I create a local logistic regression model"
         localLogisticRegression = BigML::Logistic.new(logistic_regression)
 
@@ -817,7 +655,7 @@ class TestComparePrediction < Test::Unit::TestCase
         end
 
         puts "And I create a local logistic regression prediction for <%s>" % JSON.generate(data_input)
-        local_prediction = localLogisticRegression.predict(data_input)
+        local_prediction = localLogisticRegression.predict(data_input, {"full" => true})
 
         puts "Then the local logistic regression prediction is <%s>" % prediction_result
         assert_equal(prediction_result, local_prediction["prediction"].to_f)
@@ -827,14 +665,14 @@ class TestComparePrediction < Test::Unit::TestCase
      end
   end
 
-  def test_scenario13
-     data = [['data/iris_unbalanced.csv', {}, '000004', 'Iris-setosa', 0.25284],
-             ['data/iris_unbalanced.csv', {"petal length" => 1, "sepal length" => 1, "petal width" => 1, "sepal width" => 1}, '000004', 'Iris-setosa', 0.7575]]
+  def test_scenario10
+     data = [['data/iris_unbalanced.csv', {}, '000004', 'Iris-setosa', 0.25284, [0.33333, 0.33333, 0.33333]],
+             ['data/iris_unbalanced.csv', {"petal length" => 1, "sepal length" => 1, "petal width" => 1, "sepal width" => 1}, '000004', 'Iris-setosa', 0.7575, [1.0, 0.0, 0.0]]]
 
      puts
      puts "Scenario: Successfully comparing predictions with proportional missing strategy and balanced models"
 
-     data.each do |filename, data_input, objective, prediction_result, confidence|
+     data.each do |filename, data_input, objective, prediction_result, confidence, probabilities|
         puts
         puts "Given I create a data source uploading a <%s> file" % filename
 
@@ -876,25 +714,30 @@ class TestComparePrediction < Test::Unit::TestCase
 
         puts "And I create a proportional missing strategy local prediction for <%s>" % JSON.generate(data_input)
 
-        local_prediction = local_model.predict(data_input, {'with_confidence' => true,
+        local_prediction = local_model.predict(data_input, {'full' => true,
                                                             'missing_strategy' => BigML::PROPORTIONAL})
 
         puts "Then the local prediction is <%s>" % prediction_result
 
         if prediction_result.is_a?(Numeric)
-           assert_equal(local_prediction[0].round(4), prediction_result.round(4))
+           assert_equal(local_prediction["prediction"].round(4), prediction_result.round(4))
         else
-           assert_equal(local_prediction[0], prediction_result)
+           assert_equal(local_prediction["prediction"], prediction_result)
         end
         puts "And the local prediction's confidence is <%s>" % confidence
-        assert_equal(local_prediction[1].round(2), confidence.round(2))
-
+        assert_equal(local_prediction["confidence"].round(2), confidence.round(2))
+        
+        puts "And I create local probabilities for <%s>" % JSON.generate(data_input)
+        local_probabilities = local_model.predict_probability(data_input, BigML::LAST_PREDICTION, true)
+        puts "Then the local probabilities are <%s>" % JSON.generate(probabilities)
+        assert_equal(local_probabilities, probabilities)
      end
   end
+  
   #
   # Scenario: Successfully comparing predictions for logistic regression with balance_fields:
   # 
-  def test_scenario14
+  def test_scenario11
      data = [['data/movies.csv', {"fields"=> {"000000"=> {"name"=> "user_id", "optype"=> "numeric"},
                                                    "000001"=> {"name"=> "gender", "optype"=> "categorical"},
                                                    "000002"=> {"name"=> "age_range", "optype"=> "categorical"},
@@ -906,7 +749,7 @@ class TestComparePrediction < Test::Unit::TestCase
                                                    "item_analysis" => {"separator"=> "$"}},
                                                    "000008"=> {"name"=> "timestamp", "optype"=> "numeric"},
                                                    "000009"=> {"name"=> "rating", "optype"=> "categorical"}},
-                                                   "source_parser"=> {"separator" => ";"}}, {"timestamp" => 999999999}, "5", 0.3231, "000009", {"balance_fields" => true}],
+                                                   "source_parser"=> {"separator" => ";"}}, {"timestamp" => 999999999}, "4", 0.4028, "000009", {"balance_fields" => false}],
             ['data/movies.csv', {"fields" => {"000000"=> {"name"=> "user_id", "optype"=> "numeric"},
                                                    "000001"=> {"name"=> "gender", "optype"=> "categorical"},
                                                    "000002"=> {"name"=> "age_range", "optype"=> "categorical"},
@@ -918,7 +761,7 @@ class TestComparePrediction < Test::Unit::TestCase
                                                   "item_analysis"=> {"separator"=> "$"}},
                                                   "000008"=> {"name"=> "timestamp", "optype"=> "numeric"},
                                                   "000009"=> {"name"=> "rating", "optype"=> "categorical"}},
-                                                 "source_parser"=> {"separator"=> ";"}}, {"timestamp"=> 999999999}, "4", 0.3147, "000009", {"normalize"=> true}],
+                                                 "source_parser"=> {"separator"=> ";"}}, {"timestamp"=> 999999999}, "4", 0.2622, "000009", {"normalize"=> true}],
             ['data/movies.csv', {"fields"=> {"000000"=> {"name"=> "user_id", "optype"=> "numeric"},
                                                    "000001"=> {"name"=> "gender", "optype"=> "categorical"},
                                                    "000002"=> {"name"=> "age_range", "optype"=> "categorical"},
@@ -930,7 +773,7 @@ class TestComparePrediction < Test::Unit::TestCase
                                                    "item_analysis"=> {"separator"=> "$"}},
                                                    "000008"=> {"name"=> "timestamp", "optype"=> "numeric"},
                                                    "000009"=> {"name"=> "rating", "optype"=> "categorical"}},
-                                                   "source_parser"=> {"separator"=> ";"}}, {"timestamp"=> 999999999}, "4", 0.2282, "000009", {"balance_fields"=> true, "normalize"=> true}] 
+                                                   "source_parser"=> {"separator"=> ";"}}, {"timestamp"=> 999999999}, "4", 0.2622, "000009", {"balance_fields"=> true, "normalize"=> true}] 
             ]
 
      puts
@@ -986,9 +829,9 @@ class TestComparePrediction < Test::Unit::TestCase
         end
 
         puts "And I create a local logistic regression prediction for <%s>" % JSON.generate(data_input)
-        local_prediction = localLogisticRegression.predict(data_input)
+        local_prediction = localLogisticRegression.predict(data_input, {"full" => true})
 
-        puts "Then the local logistic regression prediction is <%s>" % prediction
+        puts "Then the local logistic regression prediction is <%s>" % prediction_result
         assert_equal(prediction_result, local_prediction["prediction"])
 
         puts "And the local logistic regression probability for the prediction is <%s>" % probability
@@ -996,5 +839,227 @@ class TestComparePrediction < Test::Unit::TestCase
 
      end
   end
+  
+  #
+  # Scenario: Successfully comparing logistic regression predictions with constant fields:
+  # 
+  def test_scenario12
+     data = [['data/constant_field.csv', {"a" => 1, "b" => 1, "c" => 1}, 'a', {"fields" => {"000000" => {"preferred" => true}}}]]
+     
+     puts
+     puts "Scenario: Successfully comparing logistic regression predictions with constant fields"
+
+     data.each do |filename, data_input, prediction_result, field_id|
+        puts
+        puts "Given I create a data source uploading a <%s> file" % filename
+        source = @api.create_source(File.dirname(__FILE__)+"/"+filename, {'name'=> 'source_test', 'project'=> @project["resource"]})
+
+        puts "And I wait until the source is ready"
+        assert_equal(BigML::HTTP_CREATED, source["code"])
+        assert_equal(1, source["object"]["status"]["code"])
+        assert_equal(@api.ok(source), true)
+
+        puts "And I create a dataset"
+        dataset=@api.create_dataset(source)
+
+        puts "And I wait until the dataset is ready"
+        assert_equal(BigML::HTTP_CREATED, dataset["code"])
+        assert_equal(1, dataset["object"]["status"]["code"])
+        assert_equal(@api.ok(dataset), true)
+        
+        puts "And I create a logistic regression model"
+        logistic_regression = @api.create_logisticregression(dataset)
+        
+        puts "And I wait until the logistic regression model is ready"
+        assert_equal(BigML::HTTP_CREATED, logistic_regression["code"])
+        assert_equal(@api.ok(logistic_regression), true)
+        
+        puts "And I create a local logistic regression model"
+        localLogisticRegression = BigML::Logistic.new(logistic_regression)
+        
+        puts "When I create a logistic regression prediction for <%s>" % JSON.generate(data_input)
+        prediction = @api.create_prediction(logistic_regression, data_input)
+        assert_equal(BigML::HTTP_CREATED, prediction["code"])
+        
+        puts "Then the logistic regression prediction is <%s>" % prediction_result
+        assert_equal(prediction_result.to_s, prediction["object"]["output"].to_s)
+        
+        puts "And I create a local logistic regression prediction for <%s>" % JSON.generate(data_input)
+        local_prediction = localLogisticRegression.predict(data_input, {"full" => true})
+        
+        puts "Then the local logistic regression prediction is <%s>" % prediction_result
+        assert_equal(prediction_result, local_prediction["prediction"])
+     end    
+  end  
+  
+  # Scenario: Successfully creating a prediction:
+  def test_scenario13
+    data = [{"filename" => File.dirname(__FILE__)+"/data/iris.csv", 
+             "data_input" => {'petal width'=> 0.5},
+             "objective" => "000004",           
+             "prediction" => "Iris-setosa",
+             "pathfile" => File.dirname(__FILE__)+"/tmp/my_model.json",
+             "namefile" => "my_test"},
+             {"filename" => File.dirname(__FILE__)+"/data/iris.csv", 
+             "data_input" => {'petal length'=> 6, 'petal width'=> 2},
+             "objective" => "000004",           
+             "prediction" => "Iris-virginica",
+             "pathfile" => File.dirname(__FILE__)+"/tmp/my_model.json",
+             "namefile" => "my_test"},
+             {"filename" => File.dirname(__FILE__)+"/data/iris.csv", 
+             "data_input" => {'petal length' => 4, 'petal width'=> 1.5},
+             "objective" => "000004",           
+             "prediction" => "Iris-versicolor",
+             "pathfile" => File.dirname(__FILE__)+"/tmp/my_model.json",
+             "namefile" => "my_test"}, 
+             {"filename" => File.dirname(__FILE__)+"/data/iris_sp_chars.csv",
+             "data_input" => {"pétal.length" => 4, "pétal&width\u0000" => 1.5},
+             "objective" => "000004",   
+             "prediction" => "Iris-versicolor",
+             "pathfile" => File.dirname(__FILE__)+"/tmp/my_model.json",
+             "namefile" => "my_test"}
+	     ]
+        
+    puts 
+    puts "Scenario: Successfully comparing predictions"     
+        
+    data.each do |item|
+        puts 
+        puts "Given I create a data source uploading a <%s> file" % item["filename"]
+        source = @api.create_source(item["filename"], {'name'=> 'source_test', 'project'=> @project["resource"]})
+
+        puts "And I wait until the source is ready"
+        assert_equal(BigML::HTTP_CREATED, source["code"])
+        assert_equal(1, source["object"]["status"]["code"])
+        assert_equal(@api.ok(source), true)
+
+        puts "And I create a dataset"
+        dataset=@api.create_dataset(source)
+
+        puts "And I wait until the dataset is ready"
+        assert_equal(BigML::HTTP_CREATED, dataset["code"])
+        assert_equal(1, dataset["object"]["status"]["code"])
+        assert_equal(@api.ok(dataset), true)
+
+        puts "And I create a model"
+        model=@api.create_model(dataset, {"tags" => ["%s" % item["namefile"]]})
+
+        puts "And I wait until the model is ready"
+        assert_equal(BigML::HTTP_CREATED, model["code"])
+        assert_equal(1, model["object"]["status"]["code"])
+        assert_equal(@api.ok(model), true)
+
+        puts "And I export the model"
+        @api.export(model["resource"], item["pathfile"])
+
+        puts "And I create a local model from file %s" % item["pathfile"]  
+        local_model = BigML::Model.new(item["pathfile"], @api)
+        
+        puts "When I create a prediction for <%s>" % JSON.generate(item["data_input"])
+        prediction = @api.create_prediction(model, item["data_input"])
+        assert_equal(BigML::HTTP_CREATED, prediction["code"])
+       
+        puts "Then the prediction for <%s> is <%s>" % [item["objective"], item["prediction"]]
+        assert_equal(item["prediction"], prediction["object"]["prediction"][item["objective"]])       
+
+        puts "And I create a local prediction for <%s>" % JSON.generate(item["data_input"])
+        prediction = local_model.predict(item["data_input"])
+
+        puts "Then the local prediction is <%s>" % item["prediction"]
+        assert_equal(prediction, item["prediction"]) 
+
+        puts "I Export the tags model"
+        @api.export_last(item["namefile"], item["pathfile"])
+        
+        puts "And I create a local model from file %s" % item["pathfile"]  
+        local_model = BigML::Model.new(item["pathfile"], @api)
+        
+        puts "And I create a local prediction for <%s>" % JSON.generate(item["data_input"])
+        prediction = local_model.predict(item["data_input"])
+        
+        puts "Then the local prediction is <%s>" % item["prediction"]
+        assert_equal(prediction, item["prediction"]) 
+      
+    end
+  end
+  
+  # Successfully comparing predictions with supervised model
+  def test_scenario14
+    data = [{"filename" => File.dirname(__FILE__)+"/data/iris.csv", 
+             "data_input" => {'petal width'=> 0.5},
+             "objective" => "000004",           
+             "prediction" => "Iris-setosa"},
+             {"filename" => File.dirname(__FILE__)+"/data/iris.csv", 
+             "data_input" => {'petal length'=> 6, 'petal width'=> 2},
+             "objective" => "000004",           
+             "prediction" => "Iris-virginica"},
+             {"filename" => File.dirname(__FILE__)+"/data/iris.csv", 
+             "data_input" => {'petal length' => 4, 'petal width'=> 1.5},
+             "objective" => "000004",           
+             "prediction" => "Iris-versicolor"}, 
+             {"filename" => File.dirname(__FILE__)+"/data/iris_sp_chars.csv",
+             "data_input" => {"pétal.length" => 4, "pétal&width\u0000" => 1.5},
+             "objective" => "000004",   
+             "prediction" => "Iris-versicolor"}
+	     ]
+        
+    puts 
+    puts "Successfully comparing predictions with supervised model"     
+        
+    data.each do |item|
+        puts 
+        puts "Given I create a data source uploading a <%s> file" % item["filename"]
+        source = @api.create_source(item["filename"], {'name'=> 'source_test', 'project'=> @project["resource"]})
+
+        puts "And I wait until the source is ready"
+        assert_equal(BigML::HTTP_CREATED, source["code"])
+        assert_equal(1, source["object"]["status"]["code"])
+        assert_equal(@api.ok(source), true)
+
+        puts "And I create a dataset"
+        dataset=@api.create_dataset(source)
+
+        puts "And I wait until the dataset is ready"
+        assert_equal(BigML::HTTP_CREATED, dataset["code"])
+        assert_equal(1, dataset["object"]["status"]["code"])
+        assert_equal(@api.ok(dataset), true)
+
+        puts "And I create a model"
+        model=@api.create_model(dataset)
+
+        puts "And I wait until the model is ready"
+        assert_equal(BigML::HTTP_CREATED, model["code"])
+        assert_equal(1, model["object"]["status"]["code"])
+        assert_equal(@api.ok(model), true)
+
+
+        puts "And I create a local supervised model"
+        local_model = BigML::SupervisedModel.new(model, @api)
+        
+        puts "When I create a prediction for <%s>" % JSON.generate(item["data_input"])
+        prediction = @api.create_prediction(model, item["data_input"])
+        assert_equal(BigML::HTTP_CREATED, prediction["code"])
+       
+        puts "Then the prediction for <%s> is <%s>" % [item["objective"], item["prediction"]]
+        assert_equal(item["prediction"], prediction["object"]["prediction"][item["objective"]])       
+
+        puts "And I create a local prediction for <%s>" % JSON.generate(item["data_input"])
+        prediction = local_model.predict(item["data_input"])
+
+        puts "Then the local prediction is <%s>" % item["prediction"]
+        assert_equal(prediction, item["prediction"]) 
+
+        puts "And I create a local prediction for <%s>" % JSON.generate(item["data_input"])
+        prediction = local_model.predict(item["data_input"])
+        
+        puts "Then the local prediction is <%s>" % item["prediction"]
+        assert_equal(prediction, item["prediction"])
+      
+    end
+  end
+     
+
+  
+
 end
 

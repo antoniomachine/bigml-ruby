@@ -15,7 +15,7 @@
 # under the License.
 
 require_relative 'bigmlconnection'
-require_relative 'constants'
+require_relative 'util'
 
 module BigML
 
@@ -47,7 +47,7 @@ module BigML
        return resource if BigML::RESOURCE_RE[resource_type].match(resource)
        found_type = self.get_resource_type(resource)
        if !found_type.nil? and resource_type != self.get_resource_type(resource) 
-         raise ArgumentError, "The resource "+ resource +"  has not the expected type: " + resource_type
+         raise ArgumentError, "The resource %s  has not the expected type: %s " % [resource, resource_type]
        end
     end 
    
@@ -65,7 +65,7 @@ module BigML
        raise Exception, resource['error']['status']['message']
     end
  
-    return ([BigML::HTTP_OK, BigML::HTTP_ACCEPTED].include?(resource['code']) and get_status(resource)['code'] == BigML::FINISHED)
+    return ([BigML::HTTP_OK, BigML::HTTP_ACCEPTED].include?(resource['code']) and BigML::Util::get_status(resource)['code'] == BigML::FINISHED)
 
   end
 
@@ -76,29 +76,6 @@ module BigML
         raise Exception, message+"\nFound "+resource_type
     end
   end 
-
-  def self.get_status(resource)
-    #Extracts status info if present or sets the default if public
-    if !resource.is_a?(Hash)
-       raise ArgumentError, "We need a complete resource to extract its status"
-    end
-
-    if resource.key?('object')
-       if resource['object'].nil?
-          raise ArgumentError, "The resource has no status info %s" % resource
-       end
-       resource = resource["object"]
-    end
-
-    if !resource.fetch("private", true) or resource.fetch("status", nil).nil?
-       status = {"code" => BigML::FINISHED}
-    else
-       status = resource["status"]
-    end
-
-    return status
-
-  end
 
   def self.get_source_id(source)
     #Returns a source/id.
@@ -199,12 +176,42 @@ module BigML
     #Returns a associationset/id.
     return get_resource( BigML::ASSOCIATION_SET_PATH, association_set)
   end
-
-  def self.get_lda_id(lda)
-    #Returns an lda/id
-    return get_resource(BigML::LDA_PATH, lda)
+  
+  def self.get_configuration_id(configuration)
+    #Returns an configuration/id
+    return get_resource(BigML::CONFIGURATION_PATH, configuration)
   end
 
+  def self.get_topic_model_id(topic_model)
+    #Returns an topicmodel/id
+    return get_resource(BigML::TOPIC_MODEL_PATH, topic_model)
+  end
+
+  def self.get_topic_distribution_id(topic_distribution)
+    #Returns an topicdistribution/id
+    return get_resource(BigML::TOPIC_DISTRIBUTION_PATH, topic_distribution)
+  end
+
+  def self.get_batch_topic_distribution_id(topic_distribution)
+    #Returns an batchtopicdistribution/id
+    return get_resource(BigML::BATCH_TOPIC_DISTRIBUTION_PATH, batch_topic_distribution)
+  end
+
+  def self.get_time_series_id(time_series)
+    # Returns a timeseries/id
+    return get_resource(BigML::TIME_SERIES_PATH, time_series)
+  end
+
+  def self.get_forecast_id(forecast)
+    # Returns a forecast/id
+    return get_resource(BigML::FORECAST_PATH, forecast)
+  end
+
+  def self.get_deepnet_id(deepnet)
+    # Returns a deepnet/id
+    return get_resource(BigML::DEEPNET_PATH, deepnet)
+  end
+    
   def self.get_script_id(script)
     #Returns a script/id.
     return get_resource( BigML::SCRIPT_PATH, script)
@@ -252,15 +259,6 @@ module BigML
      # for FAULTY. The number of retries can be limited using the retries
      # parameter.
     
-     def self.get_kwargs(resource_id, query_string)
-        BigML::NO_QS.each do |resource_re|
-           return {} if resource_re.match(resource_id)
-        end
-
-        return {'query_string' => query_string}
-     end 
- 
-     kwargs = {}
      if resource.is_a?(String)
         resource_id = resource
      else
@@ -272,7 +270,7 @@ module BigML
         raise ArgumentError, "Failed to extract a valid resource id to check."
      end
 
-     kwargs = get_kwargs(resource_id, query_string)
+     kwargs = {'query_string' => query_string} 
 
      if get_method.nil? and api.respond_to?('get_resource')
         get_method = api.method("get_resource")
@@ -281,15 +279,16 @@ module BigML
      end
     
      if resource.is_a?(String)
-        resource = get_method.call(resource, kwargs.fetch("query_string", nil), 
-                                   kwargs.fetch("shared_username", nil), 
-                                   kwargs.fetch("shared_api_key", nil))
+        resource = get_method.call(resource, *kwargs.values)
+        #resource = get_method.call(resource, kwargs.fetch("query_string", nil), 
+        #                           kwargs.fetch("shared_username", nil), 
+        #                           kwargs.fetch("shared_api_key", nil))
      end
 
      counter=0
      while retries.nil? or counter < retries do
        counter+=1
-       status = get_status(resource)
+       status = BigML::Util::get_status(resource)
        code = status['code']
        if code == BigML::FINISHED
           if counter > 1 
@@ -351,10 +350,6 @@ module BigML
 
         resource_id = BigML::get_resource_id(resource)
 
-        if BigML::NO_QS.include?(resource_type) and options.key?('query_string')
-            options.delete('query_string')
-        end
-
         unless resource_id.nil?
            return self._get("#{@url}#{resource_id}", 
 	                    query_string, 
@@ -390,8 +385,8 @@ module BigML
 
         origin_datasets.each do |dataset|
            BigML::check_resource_type(dataset, BigML::DATASET_PATH, "A dataset id is needed to create the resource.")
+           dataset_ids << BigML::get_dataset_id(dataset).gsub("shared/", "")
            dataset = BigML::check_resource(dataset, nil, BigML::TINY_RESOURCE, wait_time, retries, true, self)
-           dataset_ids << BigML::get_dataset_id(dataset)
         end 
 
         create_args = {}
@@ -412,7 +407,7 @@ module BigML
  
      end
 
-    def check_origins(dataset, model, args, model_types=nil,
+     def check_origins(dataset, model, args, model_types=nil,
                       wait_time=3, retries=10)
         # Returns True if the dataset and model needed to build
         # the batch prediction or evaluation are finished. The args given
@@ -459,13 +454,120 @@ module BigML
                resource_id = BigML::get_model_id(model)
                args_update(resource_id, args, wait_time, retries, dataset_id, resource_type)
             else
-               raise Exception , "A model or ensemble id is needed as first"
-                                 " argument to create the resource."+resource_type+ " found"
+               raise "A model or ensemble id is needed as first 
+                      argument to create the resource."+resource_type+ " found"
             end
         end
 
         return (!dataset_id.nil? and !resource_id.nil?)
 
+     end
+     
+     def export(resource, filename=None, args={})
+       
+       # Retrieves a remote resource when finished and stores it
+       # in the user-given file
+       # The resource parameter should be a string containing the
+       # resource id or the dict returned by the corresponding create method.
+       # As each resource is an evolving object that is processed
+       # until it reaches the FINISHED or FAULTY state, the function will
+       # wait until the resource is in one of these states to store the
+       # associated info.
+       
+       resource_type = BigML::get_resource_type(resource)
+       if resource_type.nil?
+         raise ArgumentError, "A resource ID or structure is needed."
+       end 
+       
+       resource_id = BigML::get_resource_id(resource)
+       
+       if resource_id.nil?
+          raise ArgumentError, "First agument is expected to be a valid resource ID or structure."
+       else
+         
+         resource_info = self._get("#{@url}#{resource_id}", 
+                                    args.key?('query_string') ? args['query_string'] : nil,
+                                    args.key?('shared_username') ? args['shared_username'] : nil,
+                                    args.key?('shared_api_key') ? args['shared_api_key'] : nil,
+                                    args.key?('organization') ? args['organization'] : nil)
+         if !BigML::Util::is_status_final(resource_info)
+            BigML::http_ok(resource_info)
+         end 
+         
+         if filename.nil?
+           file_dir = @storage || BigML::Util::DFT_STORAGE
+           filename = File.join(file_dir, resource_id.gsub("/","_"))
+         end
+         
+         if BigML::COMPOSED_RESOURCES.include?(resource_type)
+           resource_info["object"]["models"].each do |component_id|
+             self.export(component_id, 
+                         File.join(File.dirname(filename), 
+                                   resource_id.gsub("/","_")), args)
+           end 
+         end
+         
+         return BigML::Util::save(resource_info, filename)
+       end
+
+     end
+     
+     def export_last(tags, filename=None,
+                     resource_type="model", 
+                     project=nil, args={})
+       # Retrieves a remote resource by tag when finished and stores it
+       # in the user-given file
+       # The resource parameter should be a string containing the
+       # resource id or the dict returned by the corresponding create method.
+       # As each resource is an evolving object that is processed
+       # until it reaches the FINISHED or FAULTY state, the function will
+       # wait until the resource is in one of these states to store the
+       # associated info.
+       # 
+       if !tags.nil? && tags != ''
+         query_string = BigML::LIST_LAST % tags
+         if !project.nil?
+           query_string += ";project=%s" % project
+         end 
+         
+         args.merge!({'query_string' => "%s;%s" % [query_string, args.fetch('query_string', '')]})
+          
+         response = self._list("%s%s" % [@url, resource_type], 
+                               args['query_string'], 
+                               args.key?('organization') ? organization : nil)
+
+         if response.fetch("objects", []).size > 0
+           resource_info = response["objects"][0]
+           if !BigML::Util::is_status_final(resource_info)
+             BigML::http_ok(resource_info)
+           end
+           
+           if filename.nil?
+             file_dir = @storage || BigML::Util::DFT_STORAGE
+             now = Time.now.strftime("%a%b%d%y_%H%M%S")
+             filename = File.join(file_dir, 
+                                 "%s_%s.json" % [tags.gsub("/", "_"), now])
+           end 
+           
+           if BigML::COMPOSED_RESOURCES.include?(resource_type)
+             resource_info["models"].each do |component_id|
+               self.export(component_id, 
+                           File.join(File.dirname(filename), 
+                                     resource_id.gsub("/","_")))
+             end 
+           end 
+           
+           return BigML::Util::save(resource_info, filename)
+           
+         else
+           raise ArgumentError, "No %s found with tags %s." % [resource_type,
+                                                                tags]
+         end
+       else
+         raise ArgumentError, "First agument is expected to be a non-empty tag"
+       end 
+       
+       
      end
 
   end 

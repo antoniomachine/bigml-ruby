@@ -34,12 +34,16 @@ Supported Ruby Versions
 -  Ruby 2.1.x
 -  Ruby 2.2.x
 -  Ruby 2.3.x
+-  Ruby 2.4.x
 
 Dependencies
 ------------
 
-- rest-client 
+- rest-client
 - activesupport
+- parsr
+- pycall
+- numo-narray
 
 Installation
 ------------
@@ -94,12 +98,6 @@ class as follows:
 
     api = BigML::Api.new('myusername', 'ae579e7e53fb9abd646a6ff8aa99d4afe83ac291')
 
-Also, you can initialize the library to work in the Sandbox environment by
-passing the parameter ``dev_mode``:
-
-.. code-block:: ruby
-
-    api = BigML::Api.new('myusername', 'ae579e7e53fb9abd646a6ff8aa99d4afe83ac291', true)
 
 Quick Start
 -----------
@@ -150,7 +148,98 @@ You can then print the prediction using the ``pprint`` method:
     api.pprint(prediction)
     species for {"sepal length"=>5, "sepal width"=>2.5} is Iris-setosa
 
+The ``iris`` dataset has a small number of instances, and usually will be
+instantly created, so the ``api.create_`` calls will probably return the
+finished resources outright. As BigML's API is asynchronous,
+in general you will need to ensure
+that objects are finished before using them by using ``api.ok``.
 
+.. code-block:: ruby
+
+    from bigml.api import BigML
+
+    api = BigML::Api.new()
+
+    source = api.create_source('./data/iris.csv')
+    api.ok(source)
+    dataset = api.create_dataset(source)
+    api.ok(dataset)
+    model = api.create_model(dataset)
+    api.ok(model)
+    prediction = api.create_prediction(model, \
+        {'petal length': 2.45, 'petal width': 1.75})
+
+This method retrieves the remote object in its latest state and updates
+the variable used as argument with this information. Note that the prediction
+call is not followed by the ``api.ok`` method. Predictions are so quick to be
+generated that, unlike the
+rest of resouces, will be generated synchronously as a finished object.
+
+
+You can also generate an evaluation for the model by using:
+
+.. code-block:: ruby
+
+    test_source = api.create_source('./data/test_iris.csv')
+    api.ok(test_source)
+    test_dataset = api.create_dataset(test_source)
+    api.ok(test_dataset)
+    evaluation = api.create_evaluation(model, test_dataset)
+    api.ok(evaluation)
+
+
+Additional Information
+----------------------
+
+For additional information about the API, see the
+`BigML developer's documentation <https://bigml.com/developers>`_.
+
+Alternative domains
+-------------------
+
+The main public domain for the API service is ``bigml.io``, but there are some
+alternative domains, either for Virtual Private Cloud setups or
+the australian subdomain (``au.bigml.io``). You can change the remote
+server domain
+to the VPC particular one by either setting the ``BIGML_DOMAIN`` environment
+variable to your VPC subdomain:
+
+.. code-block:: bash
+
+    export BIGML_DOMAIN=my_VPC.bigml.io
+
+or setting it when instantiating your connection:
+
+.. code-block:: ruby
+                    
+    api = BigML::Api.new(username, api_key, false, false, false, nil, 'my_VPC.bigml.io')
+
+The corresponding SSL REST calls will be directed to your private domain
+henceforth.
+
+You can also set up your connection to use a particular PredictServer
+only for predictions. In order to do so, yo'll need to specify a ``Domain``
+object, where you can set up the general domain name as well as the
+particular prediction domain name.
+
+.. code-block:: ruby
+
+    domain_info = BigML::Domain.new(domain, prediction_domain, prediction_protocol, 
+                                    protocol, verify, prediction_verify)
+
+    api = BigML::Api.new(.....domain_info)
+
+Some arguments for the Domain constructor are more unsual, but they can also
+be used to set your special service endpoints:
+
+- protocol (string) Protocol for the service
+  (when different from HTTPS)
+- verify (boolean) Sets on/off the SSL verification
+- prediction_verify (boolean) Sets on/off the SSL verification
+  for the prediction server (when different from the general
+  SSL verification)
+  
+  
 Fields Structure
 ----------------
 
@@ -198,6 +287,9 @@ filter them. This can be done using a query string expression, for instance:
     source = api.get_source(source, "limit=10&order_by=name")
 
 would include in the retrieved dictionary the first 10 fields sorted by name.
+
+To handle the field structure you can use the ``Fields`` class. See the
+`Fields`_ section.
 
 Dataset
 -------
@@ -279,7 +371,6 @@ for instance:
 
 limits the number of fields that will be included in ``dataset`` to 20.
 
-
 Model
 -----
 
@@ -338,7 +429,7 @@ predictive model for the example above:
        ...
 
 (Note that we have abbreviated the output in the snippet above for
-readability: the full predictive model you'll get is going to contain
+readability: the full predictive model yo'll get is going to contain
 much more details).
 
 Again, filtering options are also available using a query string expression,
@@ -349,6 +440,7 @@ for instance:
     model = api.get_model(model, "limit=5")
 
 limits the number of fields that will be included in ``model`` to 5.
+
 
 Evaluation
 ----------
@@ -442,7 +534,6 @@ where the detailed result objects include ``mean_absolute_error``,
 ``mean_squared_error`` and ``r_squared`` (refer to
 `developers documentation <https://bigml.com/developers/evaluations>`_ for
 more info on the meaning of these measures.
-
 
 Cluster
 -------
@@ -623,7 +714,7 @@ and can be retrieved as a JSON:
         'white_box' => false}
 
 (Note that we have abbreviated the output in the snippet above for
-readability: the full predictive cluster you'll get is going to contain
+readability: the full predictive cluster yo'll get is going to contain
 much more details).
 
 
@@ -870,13 +961,13 @@ score. Thus, the structure of an anomaly detector is similar to:
         'white_box' => false}
 
 Note that we have abbreviated the output in the snippet above for
-readability: the full anomaly detector you'll get is going to contain
+readability: the full anomaly detector yo'll get is going to contain
 much more details).
 
 The `trees` list contains the actual isolation forest, and it can be quite
 large usually. That's why, this part of the resource should only be included
 in downloads when needed. If you are only interested in other properties, such
-as `top_anomalies`, you'll improve performance by excluding it, using the
+as `top_anomalies`, yo'll improve performance by excluding it, using the
 `excluded=trees` query string in the API call:
 
 .. code-block:: ruby
@@ -894,7 +985,7 @@ Samples
 To provide quick access to your row data you can create a ``sample``. Samples
 are in-memory objects that can be queried for subsets of data by limiting
 their size, the fields or the rows returned. The structure of a sample would
-be::
+be:
 
 Samples are not permanent objects. Once they are created, they will be
 available as long as GETs are requested within periods smaller than
@@ -2239,6 +2330,445 @@ the ``associations`` attribute stores items, rules and metrics extracted
 from the datasets as well as the configuration parameters described in
 the `developers section <https://bigml.com/developers/associations>`_ .
 
+
+Topic Models
+------------
+
+A topic model is an unsupervised machine learning method
+for unveiling all the different topics
+underlying a collection of documents.
+BigML uses Latent Dirichlet Allocation (LDA), one of the most popular
+probabilistic methods for topic modeling.
+In BigML, each instance (i.e. each row in your dataset) will
+be considered a document and the contents of all the text fields
+given as inputs will be automatically concatenated and considered the
+document bag of words.
+
+Topic model is based on the assumption that any document
+exhibits a mixture of topics. Each topic is composed of a set of words
+which are thematically related. The words from a given topic have different
+probabilities for that topic. At the same time, each word can be attributable
+to one or several topics. So for example the word "sea" may be found in
+a topic related with sea transport but also in a topic related to holidays.
+Topic model automatically discards stop words and high
+frequency words.
+
+Topic model's main applications include browsing, organizing and understanding
+large archives of documents. It can been applied for information retrieval,
+collaborative filtering, assessing document similarity among others.
+The topics found in the dataset can also be very useful new features
+before applying other models like classification, clustering, or
+anomaly detection.
+
+The JSON structure for a topic model is:
+
+.. code-block:: ruby
+
+    >>> api.pprint(topic['object'])
+    {   'category' =>  0,
+        'code' =>  200,
+        'columns' =>  1,
+        'configuration' =>  None,
+        'configuration_status' =>  false,
+        'created' =>  '2016-11-23T23 => 47 => 54.703000',
+        'credits' =>  0.0,
+        'credits_per_prediction' =>  0.0,
+        'dataset' =>  'dataset/58362aa0983efc45a0000005',
+        'dataset_field_types' =>  {   'categorical' =>  1,
+                                    'datetime' =>  0,
+                                    'effective_fields' =>  672,
+                                    'items' =>  0,
+                                    'numeric' =>  0,
+                                    'preferred' =>  2,
+                                    'text' =>  1,
+                                    'total' =>  2},
+        'dataset_status' =>  true,
+        'dataset_type' =>  0,
+        'description' =>  '',
+        'excluded_fields' =>  [],
+        'fields_meta' =>  {   'count' =>  1,
+                            'limit' =>  1000,
+                            'offset' =>  0,
+                            'query_total' =>  1,
+                            'total' =>  1},
+        'input_fields' =>  ['000001'],
+        'locale' =>  'en_US',
+        'max_columns' =>  2,
+        'max_rows' =>  656,
+        'name' =>  u"spam dataset's Topic Model ",
+        'number_of_batchtopicdistributions' =>  0,
+        'number_of_public_topicdistributions' =>  0,
+        'number_of_topicdistributions' =>  0,
+        'ordering' =>  0,
+        'out_of_bag' =>  false,
+        'price' =>  0.0,
+        'private' =>  true,
+        'project' =>  None,
+        'range' =>  [1, 656],
+        'replacement' =>  false,
+        'resource' =>  'topicmodel/58362aaa983efc45a1000007',
+        'rows' =>  656,
+        'sample_rate' =>  1.0,
+        'shared' =>  false,
+        'size' =>  54740,
+        'source' =>  'source/58362a69983efc459f000001',
+        'source_status' =>  true,
+        'status' =>  {   'code' =>  5,
+                       'elapsed' =>  3222,
+                       'message' =>  'The topic model has been created',
+                       'progress' =>  1.0},
+        'subscription' =>  true,
+        'tags' =>  [],
+        'topic_model' =>  {   'alpha' =>  4.166666666666667,
+                            'beta' =>  0.1,
+                            'bigrams' =>  false,
+                            'case_sensitive' =>  false,
+                            'fields' =>  {   '000001' =>  {   'column_number' =>  1,
+                                                          'datatype' =>  'string',
+                                                          'name' =>  'Message',
+                                                          'optype' =>  'text',
+                                                          'order' =>  0,
+                                                          'preferred' =>  true,
+                                                          'summary' =>  {   'average_length' =>  78.14787,
+                                                                          'missing_count' =>  0,
+                                                                          'tag_cloud' =>  [   [   'call',
+                                                                                                72],
+                                                                                            [   'ok',
+                                                                                                36],
+                                                                                            [   'gt',
+                                                                                                34],
+    ...
+                                                                                            [   'worse',
+                                                                                                2],
+                                                                                            [   'worth',
+                                                                                                2],
+                                                                                            [   'write',
+                                                                                                2],
+                                                                                            [   'yest',
+                                                                                                2],
+                                                                                            [   'yijue',
+                                                                                                2]],
+                                                                          'term_forms' =>  {   }},
+                                                          'term_analysis' =>  {   'case_sensitive' =>  false,
+                                                                                'enabled' =>  true,
+                                                                                'language' =>  'en',
+                                                                                'stem_words' =>  false,
+                                                                                'token_mode' =>  'all',
+                                                                                'use_stopwords' =>  false}}},
+                            'hashed_seed' =>  62146850,
+                            'language' =>  'en',
+                            'number_of_topics' =>  12,
+                            'term_limit' =>  4096,
+                            'term_topic_assignments' =>  [   [   0,
+                                                               5,
+                                                               0,
+                                                               1,
+                                                               0,
+                                                               19,
+                                                               0,
+                                                               0,
+                                                               19,
+                                                               0,
+                                                               1,
+                                                               0],
+                                                           [   0,
+                                                               0,
+                                                               0,
+                                                               13,
+                                                               0,
+                                                               0,
+                                                               0,
+                                                               0,
+                                                               5,
+                                                               0,
+                                                               0,
+                                                               0],
+    ...
+                                                           [   0,
+                                                               7,
+                                                               27,
+                                                               0,
+                                                               112,
+                                                               0,
+                                                               0,
+                                                               0,
+                                                               0,
+                                                               0,
+                                                               14,
+                                                               2]],
+                            'termset' =>  [   '000',
+                                            '03',
+                                            '04',
+                                            '06',
+                                            '08000839402',
+                                            '08712460324',
+    ...
+
+                                            'yes',
+                                            'yest',
+                                            'yesterday',
+                                            'yijue',
+                                            'yo',
+                                            'yr',
+                                            'yup',
+                                            '\xfc'],
+                            'top_n_terms' =>  10,
+                            'topicmodel_seed' =>  '26c386d781963ca1ea5c90dab8a6b023b5e1d180',
+                            'topics' =>  [   {   'id' =>  '000000',
+                                               'name' =>  'Topic 00',
+                                               'probability' =>  0.09375,
+                                               'top_terms' =>  [   [   'im',
+                                                                     0.04849],
+                                                                 [   'hi',
+                                                                     0.04717],
+                                                                 [   'love',
+                                                                     0.04585],
+                                                                 [   'please',
+                                                                     0.02867],
+                                                                 [   'tomorrow',
+                                                                     0.02867],
+                                                                 [   'cos',
+                                                                     0.02823],
+                                                                 [   'sent',
+                                                                     0.02647],
+                                                                 [   'da',
+                                                                     0.02383],
+                                                                 [   'meet',
+                                                                     0.02207],
+                                                                 [   'dinner',
+                                                                     0.01898]]},
+                                           {   'id' =>  '000001',
+                                               'name' =>  'Topic 01',
+                                               'probability' =>  0.08215,
+                                               'top_terms' =>  [   [   'lt',
+                                                                     0.1015],
+                                                                 [   'gt',
+                                                                     0.1007],
+                                                                 [   'wish',
+                                                                     0.03958],
+                                                                 [   'feel',
+                                                                     0.0272],
+                                                                 [   'shit',
+                                                                     0.02361],
+                                                                 [   'waiting',
+                                                                     0.02281],
+                                                                 [   'stuff',
+                                                                     0.02001],
+                                                                 [   'name',
+                                                                     0.01921],
+                                                                 [   'comp',
+                                                                     0.01522],
+                                                                 [   'forgot',
+                                                                     0.01482]]},
+    ...
+                                           {   'id' =>  '00000b',
+                                               'name' =>  'Topic 11',
+                                               'probability' =>  0.0826,
+                                               'top_terms' =>  [   [   'call',
+                                                                     0.15084],
+                                                                 [   'min',
+                                                                     0.05003],
+                                                                 [   'msg',
+                                                                     0.03185],
+                                                                 [   'home',
+                                                                     0.02648],
+                                                                 [   'mind',
+                                                                     0.02152],
+                                                                 [   'lt',
+                                                                     0.01987],
+                                                                 [   'bring',
+                                                                     0.01946],
+                                                                 [   'camera',
+                                                                     0.01905],
+                                                                 [   'set',
+                                                                     0.01905],
+                                                                 [   'contact',
+                                                                     0.01781]]}],
+                            'use_stopwords' =>  false},
+        'updated' =>  '2016-11-23T23 => 48 => 03.336000',
+        'white_box' =>  false}
+
+Note that the output in the snippet above has been abbreviated.
+
+
+The topic model returns a list of top terms for each topic found in the data.
+Note that topics are not labeled, so you have to infer their meaning according
+to the words they are composed of.
+
+Once you build the topic model you can calculate each topic probability
+for a given document by using Topic Distribution.
+This information can be useful to find documents similarities based
+on their thematic.
+
+As you see,
+the ``topic_model`` attribute stores the topics and termset and term to
+topic assignment,
+as well as the configuration parameters described in
+the `developers section <https://bigml.com/api/topicmodels>`_ .
+
+
+Time Series
+-----------
+
+A time series model is a supervised learning method to forecast the future
+values of a field based on its previously observed values.
+It is used to analyze time based data when historical patterns can explain
+the future behavior such as stock prices, sales forecasting,
+website traffic, production and inventory analysis, weather forecasting, etc.
+A time series model needs to be trained with time series data,
+i.e., a field containing a sequence of equally distributed data points in time.
+
+BigML implements exponential smoothing to train time series models.
+Time series data is modeled as a level component and it can optionally
+include a trend (damped or not damped) and a seasonality
+components. You can learn more about how to include these components and their
+use in the `API documentation page <https://bigml.io/api/>`_.
+
+You can create a time series model selecting one or several fields from
+your dataset, that will be the ojective fields. The forecast will compute
+their future values.
+
+
+The JSON structure for a time series is:
+
+.. code-block:: ruby
+
+    >>> api.pprint(time_series['object'])
+    {   'category'=> 0,
+        'clones'=> 0,
+        'code'=> 200,
+        'columns'=> 1,
+        'configuration'=> None,
+        'configuration_status'=> false,
+        'created'=> '2017-07-15T12=>49=>42.601000',
+        'credits'=> 0.0,
+        'dataset'=> 'dataset/5968ec42983efc21b0000016',
+        'dataset_field_types'=> {   'categorical'=> 0,
+                                    'datetime'=> 0,
+                                    'effective_fields'=> 6,
+                                    'items'=> 0,
+                                    'numeric'=> 6,
+                                    'preferred'=> 6,
+                                    'text'=> 0,
+                                    'total'=> 6},
+        'dataset_status'=> true,
+        'dataset_type'=> 0,
+        'description'=> '',
+        'fields_meta'=> {   'count'=> 1,
+                            'limit'=> 1000,
+                            'offset'=> 0,
+                            'query_total'=> 1,
+                            'total'=> 1},
+        'forecast'=> {   '000005'=> [   {   'lower_bound'=> [   30.14111,
+                                                                30.14111,
+                                                                ...
+                                                                30.14111],
+                                            'model'=> 'A,N,N',
+                                            'point_forecast'=> [   68.53181,
+                                                                   68.53181,
+                                                                   ...
+                                                                   68.53181,
+                                                                   68.53181],
+                                            'time_range'=> {   'end'=> 129,
+                                                               'interval'=> 1,
+                                                               'interval_unit'=> 'milliseconds',
+                                                               'start'=> 80},
+                                            'upper_bound'=> [   106.92251,
+                                                                106.92251,
+                                                                ...
+                                                                106.92251,
+                                                                106.92251]},
+                                        {   'lower_bound'=> [   35.44118,
+                                                                35.5032,
+                                                                ...
+                                                                35.28083],
+                                            'model'=> 'A,Ad,N',
+                            ...
+                                                                   66.83537,
+                                                                   66.9465],
+                                            'time_range'=> {   'end'=> 129,
+                                                               'interval'=> 1,
+                                                               'interval_unit'=> 'milliseconds',
+                                                               'start'=> 80}}]},
+        'horizon'=> 50,
+        'locale'=> 'en_US',
+        'max_columns'=> 6,
+        'max_rows'=> 80,
+        'name'=> 'my_ts_data',
+        'name_options'=> 'period=1, range=[1, 80]',
+        'number_of_evaluations'=> 0,
+        'number_of_forecasts'=> 0,
+        'number_of_public_forecasts'=> 0,
+        'objective_field'=> '000005',
+        'objective_field_name'=> 'Final',
+        'objective_field_type'=> 'numeric',
+        'objective_fields'=> ['000005'],
+        'objective_fields_names'=> ['Final'],
+        'price'=> 0.0,
+        'private'=> true,
+        'project'=> None,
+        'range'=> [1, 80],
+        'resource'=> 'timeseries/596a0f66983efc53f3000000',
+        'rows'=> 80,
+        'shared'=> false,
+        'short_url'=> '',
+        'size'=> 2691,
+        'source'=> 'source/5968ec3c983efc218c000006',
+        'source_status'=> true,
+        'status'=> {   'code'=> 5,
+                       'elapsed'=> 8358,
+                       'message'=> 'The time series has been created',
+                       'progress'=> 1.0},
+        'subscription'=> true,
+        'tags'=> [],
+        'time_series'=> {   'all_numeric_objectives'=> false,
+                            'datasets'=> {   '000005'=> 'dataset/596a0f70983efc53f3000003'},
+                            'ets_models'=> {   '000005'=> [   {   'aic'=> 831.30903,
+                                                                  'aicc'=> 831.84236,
+                                                                  'alpha'=> 0.00012,
+                                                                  'beta'=> 0,
+                                                                  'bic'=> 840.83713,
+                                                                  'final_state'=> {   'b'=> 0,
+                                                                                      'l'=> 68.53181,
+                                                                                      's'=> [   0]},
+                                                                  'gamma'=> 0,
+                                                                  'initial_state'=> {   'b'=> 0,
+                                                                                        'l'=> 68.53217,
+                                                                                        's'=> [   0]},
+                                                                  'name'=> 'A,N,N',
+                                                                  'period'=> 1,
+                                                                  'phi'=> 1,
+                                                                  'r_squared'=> -0.0187,
+                                                                  'sigma'=> 19.19535},
+                                                              {   'aic'=> 834.43049,
+                                                                  ...
+                                                                  'slope'=> 0.11113,
+                                                                  'value'=> 61.39}]},
+                            'fields'=> {   '000005'=> {   'column_number'=> 5,
+                                                          'datatype'=> 'double',
+                                                          'name'=> 'Final',
+                                                          'optype'=> 'numeric',
+                                                          'order'=> 0,
+                                                          'preferred'=> true,
+                                                          'summary'=> {   'bins'=> [   [   28.06,
+                                                                                           1],
+                                                                                       [   34.44,
+                                                                                        ...
+                                                                                       [   108.335,
+                                                                                           2]],
+                                                                          ...
+                                                                          'sum_squares'=> 389814.3944,
+                                                                          'variance'=> 380.73315}}},
+                            'period'=> 1,
+                            'time_range'=> {   'end'=> 79,
+                                               'interval'=> 1,
+                                               'interval_unit'=> 'milliseconds',
+                                               'start'=> 0}},
+        'type'=> 0,
+        'updated'=> '2017-07-15T12=>49=>52.549000',
+        'white_box'=> false}
+        
+
 Whizzml Resources
 -----------------
 
@@ -2329,7 +2859,6 @@ The ``script`` can also use a ``library`` resource (please, see the
 ``Libraries`` section below for more details) by including its id in the
 ``imports`` attribute. Other attributes can be checked at the
 `API Developers documentation for Scripts<https://bigml.com/developers/scripts#ws_script_arguments>`_.
-
 
 Executions
 ----------
@@ -2459,7 +2988,6 @@ and constants will be ready to be used throughout the ``script``. Please,
 refer to the `API Developers documentation for Libraries<https://bigml.com/developers/libraries#wl_library_arguments>`_
 for more details.
 
-
 Creating Resources
 ------------------
 
@@ -2495,7 +3023,62 @@ codes <https://bigml.com/developers/status_codes>`_ for the listing of
 potential states and their semantics. So depending on your application
 you might need to import the following constants:
 
-You can query the status of any resource with the ``status`` method:
+
+.. code-block:: ruby
+
+    BigML::WAITING
+    BigML::QUEUED
+    BigML::STARTED
+    BigML::IN_PROGRESS
+    BigML::SUMMARIZED
+    BigML::FINISHED
+    BigML::UPLOADING
+    BigML::FAULTY
+    BigML::UNKNOWN
+    BigML::RUNNABLE
+
+Usually, you will simply need to wait until the resource is
+in the ``bigml.api.FINISHED`` state for further processing. If that's the case,
+the easiest way is calling the ``api.ok`` method and passing as first argument
+the object that contains your resource:
+
+.. code-block:: ruby
+
+    
+    api = BigML::Api.new() # creates a connection to BigML's API
+    source = api.create_source('my_file.csv') # creates a source object
+    api.ok(source) # checks that the source is finished and updates ``source``
+
+In this code, ``api.create_source`` will probably return a non-finished
+``source`` object. Then, ``api.ok`` will query its status and update the
+contents of the ``source`` variable with the retrieved information until it
+reaches a ``BigML::FINISHED`` or ``BigML::FAILED`` status.
+
+If you don't want the contents of the variable to be updated, you can
+also use the ``check_resource`` function:
+
+.. code-block:: ruby
+
+    BigML::check_resource(resource, api.method("get_source"))
+
+that will constantly query the API until the resource gets to a FINISHED or
+FAULTY state, or can also be used with ``wait_time`` (in seconds)
+and ``retries``
+arguments to control the polling:
+
+.. code-block:: ruby
+
+    BigML::check_resource(resource, api.method("get_source"), '', 2, 20)
+
+The ``wait_time`` value is used as seed to a wait
+interval that grows exponentially with the number of retries up to the given
+``retries`` limit.
+
+However, in other scenarios you might need to control the complete
+evolution of the resource, not only its final states.
+There, you can query the status of any resource
+with the ``status`` method, which simply returns its value and does not
+update the contents of the associated variable:
 
 .. code-block:: ruby
 
@@ -2518,32 +3101,18 @@ You can query the status of any resource with the ``status`` method:
     api.status(logistic_regression)
     api.status(association)
     api.status(association_set)
+    api.status(topic_model)
+    api.status(topic_distribution)
+    api.status(batch_topic_distribution)
+    api.status(time_series)
+    api.status(forecast)
     api.status(script)
     api.status(execution)
     api.status(library)
 
-Before invoking the creation of a new resource, the library checks that
-the status of the resource that is passed as a parameter is
-``FINISHED``. You can change how often the status will be checked with
-the ``wait_time`` argument. By default, it is set to 3 seconds.
+Remember that, consequently, you will need to retrieve the resources
+explicitly in your code to get the updated information.
 
-You can also use the ``check_resource`` function:
-
-.. code-block:: ruby
-
-    BigML::check_resource(resource, api.method("get_source"))
-
-that will constantly query the API until the resource gets to a FINISHED or
-FAULTY state, or can also be used with ``wait_time`` and ``retries``
-arguments to control the pulling:
-
-.. code-block:: ruby
-
-    BigML::check_resource(resource, api.method("get_source"), '', 2, 20)
-
-The ``wait_time`` value is used as seed to a wait
-interval that grows exponentially with the number of retries up to the given
-``retries`` limit.
 
 Projects
 ~~~~~~~~
@@ -2625,6 +3194,11 @@ or you may want to create a source from a file in a remote location:
     source = api.create_source('s3://bigml-public/csv/iris.csv',
         {'name' => 'my remote source', 'source_parser' => {'missing_tokens' => ['?']}})
 
+As already mentioned, source creation is asynchronous. In both these examples,
+the ``api.create_source`` call returns once the file is uploaded.
+Then ``source`` will contain a resource whose status code will be either
+``WAITING`` or ``QUEUED``.
+
 You can retrieve the updated status at any time using the corresponding get
 method. For example, to get the status of our source we would use:
 
@@ -2690,6 +3264,22 @@ you will get the same datasets as a result and they will be complementary:
                          "sample_rate" => 0.8, "seed" => "my seed",
                          "out_of_bag" => true})
 
+Sometimes, like for time series evaluations, it's important that the data
+in your train and test datasets is ordered. In this case, the split
+cannot be done at random. You will need to start from an ordered dataset and
+decide the ranges devoted to training and testing using the ``range``
+attribute:
+
+.. code-block:: ruby
+
+    origin_dataset = api.create_dataset(source)
+    train_dataset = api.create_dataset(
+        origin_dataset, {"name" => "Dataset Name | Training",
+                         "range" => [1, 80]})
+    test_dataset = api.create_dataset(
+        origin_dataset, {"name" => "Dataset Name | Test",
+                         "range" => [81, 100]})
+                         
 It is also possible to generate a dataset from a list of datasets
 (multidataset):
 
@@ -2711,6 +3301,7 @@ to reference the dataset to be created. For instance,
 
 would generate a new dataset containing the subset of instances in the cluster
 associated to the centroid id ``000000``.
+
 
 Creating models
 ~~~~~~~~~~~~~~~
@@ -2753,7 +3344,6 @@ a concrete centroid can be built by providing the cluster and centroid ids:
         "name" => "model for centroid 000001", "centroid" => "000001"})
 
 if no centroid id is provided, the first one appearing in the cluster is used.
-
 
 Creating clusters
 ~~~~~~~~~~~~~~~~~
@@ -2823,11 +3413,75 @@ status at any time by means of ``api.status(association)``.
 Associations can also be created from lists of datasets. Just use the
 list of ids as the first argument in the api call
 
-.. code-block:: bigml 
+.. code-block:: ruby 
 
     model = api.create_association([dataset1, dataset2], {
         "name" => "my association", "input_fields" => ["000000", "000001"],
         "range" => [1, 10]})
+
+
+Creating topic models
+~~~~~~~~~~~~~~~~~~~~~
+
+To find which topics do your documents refer to you can create a topic model.
+The only required argument to create a topic model
+is a dataset id.
+You can also
+include in the request all the additional arguments accepted by BigML
+and documented in the `Topic Model section of the Developer's
+documentation <https://bigml.com/api/topicmodels>`_.
+
+For example, to create a topic model including exactly 32 topics
+you can use the following
+invocation:
+
+.. code-block:: ruby
+
+    topic_model = api.create_topic_model(dataset,
+        {"name" => "my topics", "number_of_topics" => 32})
+
+Again, the topic model is scheduled for creation, and you can retrieve its
+status at any time by means of ``api.status(topic_model)``.
+
+Topic models can also be created from lists of datasets. Just use the
+list of ids as the first argument in the api call
+
+.. code-block:: ruby
+
+    topic_model = api.create_topic_model([dataset1, dataset2],
+        {"name" => "my topics", "number_of_topics" => 32})
+
+Creating time series
+~~~~~~~~~~~~~~~~~~~~
+
+To forecast the behaviour of any numeric variable that depends on its
+historical records you can use a time series.
+The only required argument to create a time series
+is a dataset id.
+You can also
+include in the request all the additional arguments accepted by BigML
+and documented in the `Time Series section of the Developer's
+documentation <https://bigml.com/api/timeseries>`_.
+
+For example, to create a time series including a forecast of 10 points
+for the numeric values you can use the following
+invocation:
+
+.. code-block:: ruby
+
+    time_series = api.create_time_series(dataset,
+        {"name" => "my time series", "horizon" => 10})
+
+Again, the time series is scheduled for creation, and you can retrieve its
+status at any time by means of ``api.status(time_series)``.
+
+Time series also be created from lists of datasets. Just use the
+list of ids as the first argument in the api call
+
+.. code-block:: ruby
+
+    time_series = api.create_time_series([dataset1, dataset2],
+        {"name" => "my time series", "horizon" => 10})
 
 Creating predictions
 ~~~~~~~~~~~~~~~~~~~~
@@ -2848,8 +3502,7 @@ To see the prediction you can use ``pprint``:
 .. code-block:: ruby
 
     api.pprint(prediction)
-
-
+    
 Creating centroids
 ~~~~~~~~~~~~~~~~~~
 
@@ -2871,7 +3524,7 @@ You can also give the centroid predicition a name:
                                     "age" => 31,
                                     "diabetes" => "true"},
                                     {"name" => "my centroid"})
-
+                                    
 
 Creating anomaly scores
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -2897,6 +3550,35 @@ ID or object and the next one is the input data.
 
     association_set = api.create_association_set(association, {"genres" => "Action$Adventure"}, 
                                                         args={"name" => "my association set"})
+ 
+Creating topic distributions
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+To obtain the topic distributions associated to new input data, you
+can now use the ``create_topic_distribution`` method. Give
+the method a topic model identifier and the input data to obtain the score:
+
+.. code-block:: ruby
+
+    topic_distribution = api.create_topic_distribution(
+         topic_model,
+         {"Message" => "The bubble exploded in 2007."},
+         {"name" => "my topic distribution"})
+
+
+Creating forecasts
+~~~~~~~~~~~~~~~~~~
+
+To obtain the forecast associated to a numeric variable, you
+can now use the ``create_forecast`` method. Give
+the method a time series identifier and the input data to obtain the forecast:
+
+.. code-block:: ruby
+
+    forecast = api.create_forecast(
+        time_series,
+        {"Final" => {"horizon" => 10}})
+
 
 Creating evaluations
 ~~~~~~~~~~~~~~~~~~~~
@@ -2928,7 +3610,6 @@ object instead of the model as first argument:
 
     evaluation = api.create_evaluation(ensemble, dataset)
 
-
 Creating ensembles
 ~~~~~~~~~~~~~~~~~~
 
@@ -2940,18 +3621,138 @@ The only required argument to create an ensemble is the dataset id:
 
     ensemble = api.create_ensemble('dataset/5143a51a37203f2cf7000972')
 
-but you can also specify the number of models to be built and the
-parallelism level for the task:
+BigML offers three kinds of ensembles. Two of them are known as ``Decision
+Forests`` because they are built as collections of ``Decision trees``
+whose predictions
+are aggregated using different combiners (``plurality``,
+``confidence weighted``, ``probability weighted``) or setting a ``threshold``
+to issue the ensemble's
+prediction. All ``Decision Forests`` use bagging to sample the
+data used to build the underlying models.
 
-.. code-block:: ruby 
+As an example of how to create a ``Decision Forest``
+with `20` models, you only need to provide the dataset ID that you want to
+build the ensemble from and the number of models:
 
-    args = {'number_of_models' => 20, 'tlp' => 3}
+.. code-block:: ruby
+
+    args = {'number_of_models' => 20}
     ensemble = api.create_ensemble('dataset/5143a51a37203f2cf7000972', args)
 
-``tlp`` (task-level parallelism) should be an integer between 1 and 5 (the
-number of models to be built in parallel). A higher ``tlp`` results in faster
-ensemble creation, but it will consume more credits. The default value for
-``number_of_models`` is 10 and for ``tlp`` is 1.
+If no ``number_of_models`` is provided, the ensemble will contain 10 models.
+
+``Random Decision Forests`` fall
+also into the ``Decision Forest`` category,
+but they only use a subset of the fields chosen
+at random at each split. To create this kind of ensemble, just use the
+``randomize`` option:
+
+.. code-block:: ruby
+
+    args = {'number_of_models' => 20, 'randomize' => true}
+    ensemble = api.create_ensemble('dataset/5143a51a37203f2cf7000972', args)
+
+The third kind of ensemble is ``Boosted Trees``. This type of ensemble uses
+quite a different algorithm. The trees used in the ensemble don't have as
+objective field the one you want to predict, and they don't aggregate the
+underlying models' votes. Instead, the goal is adjusting the coefficients
+of a function that will be used to predict. The
+models' objective is, therefore, the gradient that minimizes the error
+of the predicting function (when comparing its output
+with the real values). The process starts with
+some initial values and computes these gradients. Next step uses the previous
+fields plus the last computed gradient field as
+the new initial state for the next iteration.
+Finally, it stops when the error is smaller than a certain threshold
+or iterations reach a user-defined limit.
+In classification problems, every category in the ensemble's objective field
+would be associated with a subset of the ``Boosted Trees``. The objective of
+each subset of trees
+is adjustig the function to the probability of belonging
+to this particular category.
+
+In order to build
+an ensemble of ``Boosted Trees`` you need to provide the ``boosting``
+attributes. You can learn about the existing attributes in the `ensembles'
+section of the API documentation <https://bigml.com/api/ensembles#es_gradient_boosting>`_,
+but a typical attribute to be set would
+be the maximum number of iterations:
+
+.. code-block:: ruby
+
+    args = {'boosting' => {'iterations' => 20}}
+    ensemble = api.create_ensemble('dataset/5143a51a37203f2cf7000972', args)
+
+Creating logistic regressions
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+For classification problems, you can choose also logistic regressions to model
+your data. Logistic regressions compute a probability associated to each class
+in the objective field. The probability is obtained using a logistic
+function, whose argument is a linear combination of the field values.
+
+As the rest of models, logistic regressions can be created from a dataset by
+calling the corresponding create method:
+
+.. code-block:: ruby
+
+    logistic_regression = api.create_logisticregression(
+        'dataset/5143a51a37203f2cf7000972',
+        {"name" => "my logistic regression",
+         "objective_field" => "my_objective_field"})
+
+In this example, we created a logistic regression named
+``my logistic regression`` and set the objective field to be
+``my_objective_field``. Other arguments, like ``bias``, ``missing_numerics``
+and ``c`` can also be specified as attributes in arguments dictionary at
+creation time.
+Particularly for categorical fields, there are four different available
+`field_codings`` options (``dummy``, ``contrast``, ``other`` or the ``one-hot``
+default coding). For a more detailed description of the
+``field_codings`` attribute and its syntax, please see the `Developers API
+Documentation
+<https://bigml.com/api/logisticregressions#lr_logistic_regression_arguments>`_.
+
+
+Creating deepnets
+~~~~~~~~~~~~~~~~~
+
+Deepnets can also solve classification and regression problems.
+Deepnets are an optimized version of Deep Neural Networks,
+a class of machine-learned models inspired by the neural
+circuitry of the human brain. In these classifiers, the input features
+are fed to a group of "nodes" called a "layer".
+Each node is essentially a function on the input that
+transforms the input features into another value or collection of values.
+Then the entire layer transforms an input vector into a new "intermediate"
+feature vector. This new vector is fed as input to another layer of nodes.
+This process continues layer by layer, until we reach the final "output"
+layer of nodes, where the output is the network’s prediction: an array
+of per-class probabilities for classification problems or a single,
+real value for regression problems.
+
+Deepnets predictions compute a probability associated to each class
+in the objective field for classification problems.
+As the rest of models, deepnets can be created from a dataset by
+calling the corresponding create method:
+
+.. code-block:: ruby
+
+    deepnet = api.create_deepnet(
+        'dataset/5143a51a37203f2cf7000972',
+        {"name" => "my deepnet",
+         "objective_field" => "my_objective_field"})
+
+In this example, we created a deepnet named
+``my deepnet`` and set the objective field to be
+``my_objective_field``. Other arguments, like ``number_of_hidden_layers``,
+``learning_rate``
+and ``missing_numerics`` can also be specified as attributes
+in an arguments dictionary at
+creation time. For a more detailed description of the
+available attributes and its syntax, please see the `Developers API
+Documentation
+<https://bigml.com/api/deepnets#dn_deepnet_arguments>`_.
 
 
 Creating batch predictions
@@ -2985,7 +3786,19 @@ Then you can download the created predictions file using:
 .. code-block:: ruby
 
     api.download_batch_prediction('batchprediction/526fc344035d071ea3031d70',
-        'my_dir/my_predictions.csv')
+                                  'my_dir/my_predictions.csv')
+
+The output of a batch prediction can also be transformed to a source object
+using the ``source_from_batch_prediction`` method in the api:
+
+.. code-block:: ruby
+
+    api.source_from_batch_prediction(
+        'batchprediction/526fc344035d071ea3031d70',
+         {'name' => 'my_batch_prediction_source'})
+
+This code will create a new source object, that can be used again as starting
+point to generate datasets.
 
 Creating batch centroids
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -3017,6 +3830,24 @@ anomaly detector to assign an anomaly score to each input data instance:
     batch_anomaly_score = api.create_batch_anomaly_score(anomaly, dataset, {
         "name" => "my batch anomaly score", "all_fields" => true,
         "header" => true})
+
+Creating batch topic distributions
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Input data can also be assigned a topic distribution in batch. You train a
+topic model with your training data and then build a dataset from your
+input data. The ``create_batch_topic_distribution`` call will need the id
+of the dataset and of the
+topic model to assign a topic distribution to each input data instance:
+
+.. code-block:: ruby
+
+    batch_topic_distribution = api.create_batch_topic_distribution(
+        topic_model, dataset, {
+        "name" => "my batch topic distribution", "all_fields" => true,
+        "header" => true})
+
+
 
 Reading Resources
 -----------------
@@ -3054,6 +3885,12 @@ You can list resources with the appropriate api method:
     api.list_logistic_regressions()
     api.list_associations()
     api.list_association_sets()
+    api.list_topic_models()
+    api.list_topic_distributions()
+    api.list_batch_topic_distributions()
+    api.list_time_series()
+    api.list_deepnets()
+    api.list_forecasts()
     api.list_scripts()
     api.list_libraries()
     api.list_executions()
@@ -3185,9 +4022,15 @@ problems or one of the HTTP standard error codes otherwise.
     api.update_project(project, {"name" => "new name"})
     api.update_correlation(correlation, {"name" => "new name"})
     api.update_statistical_test(statistical_test, {"name" => "new name"})
-    api.update_logistic_regression(logistic_regression, {"name" => "new name"})
+    api.update_logisticregression(logistic_regression, {"name" => "new name"})
     api.update_association(association, {"name" => "new name"})
     api.update_association_set(association_set, {"name" => "new name"})
+    api.update_topic_model(topic_model, {"name" => "new name"})
+    api.update_topic_distribution(topic_distribution, {"name" => "new name"})
+    api.update_batch_topic_distribution(batch_topic_distribution, {"name" => "new name"})
+    api.update_time_series(time_series, {"name" => "new name"})
+    api.update_forecast(forecast, {"name" => "new name"})
+    api.update_deepnet(deepnet, {"name" => "new name"})
     api.update_script(script, {"name" => "new name"})
     api.update_library(library, {"name" => "new name"})
     api.update_execution(execution, {"name" => "new name"})
@@ -3205,9 +4048,41 @@ its type to ``categorical`` by calling:
 
 
 where ``000001`` is the field id that corresponds to the updated field.
+
+Another usually needed update is changing a fields' ``non-preferred``
+attribute,
+so that it can be used in the modeling process:
+
+
+.. code-block:: ruby
+
+    api.update_dataset(dataset, {"fields" => {"000001" => {"preferred" => true}}})
+
+where you would be setting as ``preferred`` the field whose id is ``000001``.
+
+You may also want to change the name of one of the clusters found in your
+clustering:
+
+
+.. code-block:: ruby
+
+    api.update_cluster(cluster, \
+        {"clusters" => {"000001" => {"name" => "my cluster"}}})
+
+which is changing the name of the cluster whose centroid id is ``000001`` to
+``my_cluster``. Or, similarly, changing the name of one detected topic:
+
+
+.. code-block:: ruby
+
+    api.update_topic_model(topic_model, \
+        {"topics" => {"000001" => {"name" => "my topic"}}})
+
+
 You will find detailed information about
 the updatable attributes of each resource in
-`BigML developer's documentation <https://bigml.com/developers>`_.
+`BigML developer's documentation <https://bigml.com/api>`_.
+
 
 Deleting Resources
 ------------------
@@ -3236,6 +4111,12 @@ each type of resource.
     api.delete_logistic_regression(logistic_regression)
     api.delete_association(association)
     api.delete_association_set(association_set)
+    api.delete_topic_model(topic_model)
+    api.delete_topic_distribution(topic_distribution)
+    api.delete_batch_topic_distribution(batch_topic_distribution)
+    api.delete_time_series(time_series)
+    api.delete_forecast(forecast)
+    api.delete_deepnet(deepnet)
     api.delete_project(project)
     api.delete_script(script)
     api.delete_library(library)
@@ -3252,8 +4133,7 @@ keys:
 -  **error** If the request does not succeed, it will contain a
    dictionary with an error code and a message. It will be ``nil``
    otherwise.
-
-
+   
 Public and shared resources
 ---------------------------
 
@@ -3315,6 +4195,50 @@ model:
 
 Only users with the share link or credentials information will be able to
 access your shared models.
+
+Local Resources
+---------------
+
+All the resources in BigML can be downloaded and used locally with no
+connection whatsoever to BigML's servers. This is specially important
+for all Supervised and Unsupervised models, that can be used to generate
+predictions in any programmable device. The next sections describe how to
+do that for each type of resource, but as a general rule, resources can be
+exported to a JSON file in your file system using the ``export`` method.
+
+.. code-block:: ruby
+
+    api.export('model/5143a51a37203f2cf7000956',
+               'my_dir/my_model.json')
+
+The contents of the generated file can be used just as the remote model
+to generate predictions. As you'll see in next section, the local ``Model``
+object can be instantiated by giving the path to this file as first argument:
+
+.. code-block:: ruby
+
+    local_model = BigML::Model.new("my_dir/my_model.json")
+    local_model.predict({"petal length" => 3, "petal width" => 1})
+    Iris-versicolor
+
+If you use a tag to label the resource, you can also ask for the last resource
+that has the tag:
+
+.. code-block:: ruby
+
+    api.export_last('my_tag',
+                    'my_dir/my_ensemble.json'
+                    'ensemble')
+                     
+and even for a resource inside a project:
+
+.. code-block:: ruby
+
+    api.export_last('my_tag',
+                    'my_dir/my_dataset.json'
+                    'dataset',
+                    'project/5143a51a37203f2cf7000959')
+
 
 Local Models
 ------------
@@ -3386,26 +4310,33 @@ Local predictions have three clear advantages:
 - Extremely low latency to generate predictions for huge volumes of data.
 
 The default output for local predictions is the prediction itself, but you can
-also add the associated confidence, the distribution, and the number
-of instances in the final node by using some additional arguments. To obtain
-a dictionary with the prediction, confidence and rules:
+also add other properties associated to the prediction, like its
+confidence or probability, the distribution of values in the predicted node
+(for decision tree models), and the number of instances supporting the
+prediction. To obtain a
+dictionary with the prediction and the available additional
+properties use the ``'full' => true`` argument:
 
 .. code-block:: ruby
 
     # add_confidence=true add_path=true
     local_model.predict({"petal length" => 3, "petal width" => 1},
-                        {"add_confidence" => true, "add_path" => true})
+                        {"full" => true})
  
 that will return:
 
 .. code-block:: ruby
 
-    {'path' => ['petal length > 2.35',
-                'petal width <= 1.75',
-                'petal length <= 4.95',
-                'petal width <= 1.65'],
-     'confidence' => 0.91033,
-     'prediction' => 'Iris-versicolor'}
+    {'count': 47,
+     'confidence': 0.92444,
+     'probability': 0.9861111111111112,
+     'prediction': u'Iris-versicolor',
+     'distribution_unit': 'categories',
+     'path': [u'petal length > 2.45',
+              u'petal width <= 1.75',
+              u'petal length <= 4.95',
+              u'petal width <= 1.65'],
+     'distribution': [[u'Iris-versicolor', 47]]}
 
 Note that the ``add_path`` argument for the ``proportional`` missing strategy
 shows the path leading to a final unique node, that gives the prediction, or
@@ -3416,52 +4347,20 @@ that leads to the prediction. For regression models, ``add_min`` and
 ``add_max`` will add the limit values for the data that supports the
 prediction.
 
-In classification models, the prediction is always the most frequent category
-amongst the ones that form the distribution in the predicted node. However, you
-might want to get the complete list of the categories in the predicted node,
-together with their confidence. Using the ``multiple`` argument you will get
-the list of categories with their associated information.
-
-.. code-block:: ruby
-    # multiple = 'all'
-    local_model.predict({"petal length": 3}, {"options" => "all"})
-
-will result in
-
-.. code-block:: ruby
-
-    [{'count' => 50,
-      'confidence' => 0.2628864565745068,
-      'prediction' => u'Iris-setosa',
-      'probability' => 0.3333333333333333},
-     {'count' => 50,
-      'confidence' => 0.2628864565745068,
-      'prediction' => u'Iris-versicolor',
-      'probability' => 0.3333333333333333},
-     {'count' => 50,
-      'confidence' => 0.2628864565745068,
-      'prediction' => u'Iris-virginica',
-      'probability' => 0.3333333333333333}]
-
-The argument can be set to ``all`` to obtain the complete
-list or to an integer``n``, in which case you will obtain the top ``n``
-predictions.
-
-When your test data has missing values, you can choose between
-``last prediction``
-or ``proportional`` strategy to compute the prediction. The `last prediction`
-strategy is the one used by default. To compute a prediction, the algorithm
-goes down the model's decision tree and checks the condition it finds at
-each node (e.g.: 'sepal length' > 2). If the field checked is missing in your
-input data you have two options: by default (``last prediction`` strategy)
-the algorithm will stop and issue the last prediction
-it computed in the previous node. If you chose ``proportional`` strategy
-instead, the algorithm will continue to go down the tree considering both
-branches from that node on. Thus, it will store a list of possible predictions
-from then on,
-one per valid node. In this case, the final prediction will be the majority
-(for categorical models) or the average (for regressions) of values predicted
-by the list of predicted values.
+When your test data has missing values, you can choose between ``last
+prediction`` or ``proportional`` strategy to compute the
+prediction. The ``last prediction`` strategy is the one used by
+default. To compute a prediction, the algorithm goes down the model's
+decision tree and checks the condition it finds at each node (e.g.:
+'sepal length' > 2). If the field checked is missing in your input
+data you have two options: by default (``last prediction`` strategy)
+the algorithm will stop and issue the last prediction it computed in
+the previous node. If you chose ``proportional`` strategy instead, the
+algorithm will continue to go down the tree considering both branches
+from that node on. Thus, it will store a list of possible predictions
+from then on, one per valid node. In this case, the final prediction
+will be the majority (for categorical models) or the average (for
+regressions) of values predicted by the list of predicted values.
 
 You can set this strategy by using the ``missing_strategy``
 argument with code ``0`` to use ``last prediction`` and ``1`` for
@@ -3470,8 +4369,134 @@ argument with code ``0`` to use ``last prediction`` and ``1`` for
 .. code-block:: ruby
 
     # LAST_PREDICTION = 0; PROPORTIONAL = 1
-    local_model.predict({"petal length": 3, "petal width": 1},
-                        {"missing_strategy" => BigML::PROPORTIONAL})
+    local_model.predict({"petal length" => 3, "petal width" => 1},
+                        {missing_strategy => BigML::PROPORTIONAL})
+
+For classification models, it is sometimes useful to obtain a
+probability or confidence prediction for each possible class of the
+objective field.  To do this, you can use the ``predict_probability``
+and ``predict_confidence`` methods respectively.  The former gives a
+prediction based on the distribution of instances at the appropriate
+leaf node, with a Laplace correction based on the root node
+distribution.  The latter returns a lower confidence bound on the leaf
+node probability based on the Wilson score interval.
+
+Each of these methods take the ``missing_strategy``
+argument that functions as it does in ``predict``, and one additional
+argument, ``compact``.  If ``compact`` is ``false`` (the default), the
+output of these functions is a list of maps, each with the keys
+``prediction`` and ``probability`` (or ``confidence``) mapped to the
+class name and its associated probability (or confidence). Note that these
+methods substitute the deprecated ``multiple`` parameter in the ``predict``
+method functionallity.
+
+So, for example, the following:
+
+.. code-block:: ruby
+
+    local_model.predict_probability({"petal length" => 3})
+
+would result in
+
+.. code-block:: ruby
+
+    [{'prediction' => u'Iris-setosa',
+      'probability' => 0.0033003300330033},
+     {'prediction' => u'Iris-versicolor',
+      'probability' => 0.4983498349834984},
+     {'prediction' => u'Iris-virginica',
+      'probability' => 0.4983498349834984}]
+
+If ``compact`` is ``true``, only the probabilities themselves are
+returned, as a list in class name order.  Note that, for reference,
+the attribute ``Model.class_names`` contains the class names in the
+appropriate ordering.
+
+To illustrate, the following:
+
+.. code-block:: ruby
+
+    local_model.predict_probability({"petal length": 3}, BigML::LAST_PREDICTION, true)
+
+would result in
+
+.. code-block:: ruby
+
+    [0.0033003300330033, 0.4983498349834984, 0.4983498349834984]
+
+The output of ``predict_confidence`` is the same, except that the
+output maps are keyed with ``confidence`` instead of ``probability``.
+
+
+For classifications, the prediction of a local model will be one of the
+available categories in the objective field and an associated ``confidence``
+or ``probability`` that is used to decide which is the predicted category.
+If you prefer the model predictions to be operated using any of them, you can
+use the ``operating_kind`` argument in the ``predict`` method.
+Here's the example
+to use predictions based on ``confidence``:
+
+.. code-block:: ruby
+
+    local_model.predict({"petal length" => 3, "petal width" => 1},
+                        {"operating_kind" => "confidence"})
+
+Previous versions of the bindings had additional arguments in the ``predict``
+method that were used to format the prediction attributes. The signature of
+the method has been changed to accept only arguments that affect the
+prediction itself, (like ``missing_strategy``, ``operating_kind`` and
+``opreating_point``) and ``full`` which is a boolean that controls whether
+the output is the prediction itself or a dictionary will all the available
+properties associated to the prediction. Formatting can be achieved by using
+the ``cast_prediction`` function:
+
+.. code-block:: ruby
+
+    def cast_prediction(full_prediction, to=nil, confidence=false,
+                         probability=false,path=false, distribution=false, 
+                         count=false, _next=false, d_min=false, d_max=false, 
+                         median=false,unused_fields=false)
+                         
+whose first argument is the prediction obtained with the ``full=true``
+argument, the second one defines the type of output (``None```to obtain
+the prediction output only, "list" or "dict") and the rest of booleans
+cause the corresponding property to be included or not.
+
+Operating point's predictions
+------------------`-----------
+
+In classification problems,
+Models, Ensembles and Logistic Regressions can be used at different
+operating points, that is, associated to particular thresholds. Each
+operating point is then defined by the kind of property you use as threshold,
+its value and a the class that is supposed to be predicted if the threshold
+is reached.
+
+Let's assume you decide that you have a binary problem, with classes ``true``
+and ``false`` as possible outcomes. Imagine you want to be very sure to
+predict the `true` outcome, so you don't want to predict that unless the
+probability associated to it is over ``0,8``. You can achieve this with any
+classification model by creating an operating point:
+
+.. code-block:: ruby
+
+    operating_point = {"kind" => "probability",
+                       "positive_class" => "true",
+                       "threshold" => 0.8}
+
+to predict using this restriction, you can use the ``operating_point``
+parameter:
+
+.. code-block:: ruby
+
+    prediction = local_model.predict(inputData,
+                                     {operating_point=>operating_point})
+
+where ``inputData`` should contain the values for which you want to predict.
+Local models allow two kinds of operating points: ``probability`` and
+``confidence``. For both of them, the threshold can be set to any number
+in the ``[0, 1]`` range.
+
 
 Local Clusters
 --------------
@@ -3511,6 +4536,16 @@ retrieval. This ensures that all fields are retrieved by the get method in the
 same call (unlike in the standard calls where the number of fields returned is
 limited).
 
+Local clusters provide also methods for the significant operations that
+can be done using clusters: finding the centroid assigned to a certain data
+point, sorting centroids according to their distance to a data point,
+summarizing
+the centroids intra-distances and inter-distances and also finding the
+closest points to a given one. The `Local Centroids <#local-centroids>`_
+and the
+`Summary generation <#summary-generation>`_ sections will
+explain these methods.
+
 
 Local Centroids
 ---------------
@@ -3531,11 +4566,89 @@ an input data set:
 
 You must keep in mind, though, that to obtain a centroid prediction, input data
 must have values for all the numeric fields. No missing values for the numeric
-fields are allowed.
+fields are allowed unless you provided a ``default_numeric_value`` in the
+cluster construction configuration. If so, this value will be used to fill
+the missing numeric fields.
 
 As in the local model predictions, producing local centroids can be done
 independently of BigML servers, so no cost or connection latencies are
 involved.
+
+Another interesting method in the cluster object is
+``local_cluster.closests_in_cluster``, which given a reference data point
+will provide the rest of points that fall into the same cluster sorted
+in an ascending order according to their distance to this point. You can limit
+the maximum number of points returned by setting the ``number_of_points``
+argument to any positive integer.
+
+.. code-block:: ruby
+
+    local_cluster.closests_in_cluster(
+        {"pregnancies" => 0, "plasma glucose" => 118,
+         "blood pressure" => 84, "triceps skin thickness" => 47,
+         "insulin" => 230, "bmi"=> 45.8,
+         "diabetes pedigree"=> 0.551, "age"=> 31,
+         "diabetes" =>"true"}, 2)
+
+The response will be a dictionary with the centroid id of the cluster an
+the list of closest points and their distances to the reference point.
+
+.. code-block:: ruby
+
+    {'closest': [ \
+        {'distance': 0.06912270988567025,
+         'data': {'plasma glucose': '115', 'blood pressure': '70',
+                  'triceps skin thickness': '30', 'pregnancies': '1',
+                  'bmi': '34.6', 'diabetes pedigree': '0.529',
+                  'insulin': '96', 'age': '32', 'diabetes': 'true'}},
+        {'distance': 0.10396456577958413,
+         'data': {'plasma glucose': '167', 'blood pressure': '74',
+         'triceps skin thickness': '17', 'pregnancies': '1', 'bmi': '23.4',
+         'diabetes pedigree': '0.447', 'insulin': '144', 'age': '33',
+         'diabetes': 'true'}}],
+    'reference': {'age': 31, 'bmi': 45.8, 'plasma glucose': 118,
+                  'insulin': 230, 'blood pressure': 84,
+                  'pregnancies': 0, 'triceps skin thickness': 47,
+                  'diabetes pedigree': 0.551, 'diabetes': 'true'},
+    'centroid_id': u'000000'}
+
+No missing numeric values are allowed either in the reference data point.
+If you want the data points to belong to a different cluster, you can
+provide the ``centroid_id`` for the cluster as an additional argument.
+
+Other utility methods are ``local_cluster.sorted_centroids`` which given
+a reference data point will provide the list of centroids sorted according
+to the distance to it
+
+.. code-block:: ruby
+
+    local_cluster.sorted_centroids( \
+    {'plasma glucose' => '115', 'blood pressure' => '70',
+     'triceps skin thickness' => '30', 'pregnancies' => '1',
+     'bmi' => '34.6', 'diabetes pedigree' => '0.529',
+     'insulin' => '96', 'age' => '32', 'diabetes' => 'true'})
+    {'centroids' => [{'distance' => 0.31656890408929705,
+                    'data': {'000006' => 0.34571, '000007' => 30.7619,
+                             '000000' => 3.79592, '000008' => u'false'},
+                    'centroid_id' => '000000'},
+                   {'distance' => 0.4424198506958207,
+                    'data': {'000006' => 0.77087, '000007' => 45.50943,
+                             '000000' => 5.90566, '000008' => u'true'},
+                    'centroid_id' => '000001'}],
+     'reference': {'age' => '32', 'bmi' => '34.6', 'plasma glucose' => '115',
+                   'insulin' => '96', 'blood pressure' => '70',
+                   'pregnancies' => '1', 'triceps skin thickness' => '30',
+                   'diabetes pedigree' => '0.529', 'diabetes' => 'true'}}
+
+
+
+or ``points_in_cluster`` that returns the list of
+data points assigned to a certain cluster, given its ``centroid_id``.
+
+.. code-block:: ruby
+
+    centroid_id = "000000"
+    local_cluster.points_in_cluster(centroid_id)
 
 Local Anomaly Detector
 ----------------------
@@ -3582,7 +4695,7 @@ the top anomalies. Setting the ``include`` parameter to true you can do the
 inverse and create a dataset with only the most anomalous data points.
 
 
-Local Anomaly Scores
+ocal Anomaly Scores
 --------------------
 
 Using the local anomaly detector object, you can predict the anomaly score
@@ -3641,6 +4754,7 @@ method in the
 same call (unlike in the standard calls where the number of fields returned is
 limited).
 
+
 Local Logistic Regression Predictions
 -------------------------------------
 
@@ -3665,6 +4779,152 @@ You must keep in mind, though, that to obtain a logistic regression
 prediction, input data
 must have values for all the numeric fields. No missing values for the numeric
 fields are allowed.
+
+For consistency of interface with the ``Model`` class, logistic
+regressions again have a ``predict_probability`` method, which takes
+the same argument as ``Model.predict``:
+``compact``.  As stated above, missing values are not allowed, and so
+there is no ``missing_strategy`` argument.
+
+As with local Models, if ``compact`` is ``false`` (the default), the
+output is a list of maps, each with the keys ``prediction`` and
+``probability`` mapped to the class name and its associated
+probability.
+
+So, for example
+
+.. code-block:: ruby
+
+    local_log_regression.predict_probability({"petal length" => 2, "sepal length" => 1.5,
+                                              "petal width" => 0.5, "sepal width" => 0.7})
+
+    [{'prediction' => u'Iris-setosa', 'probability' => 0.02659013168639014},
+     {'prediction' => u'Iris-versicolor', 'probability' => 0.46926542042788333},
+     {'prediction' => u'Iris-virginica', 'probability' => 0.5041444478857267}]
+
+If ``compact`` is ``true``, only the probabilities themselves are
+returned, as a list in class name order, again, as is the case with
+local Models.
+
+Operating point predictions are also available for local logistic regressions
+and an example of it would be:
+
+.. code-block:: ruby
+
+    operating_point = {"kind" => "probability",
+                       "positive_class" => "true",
+                       "threshold" => 0.8}
+    local_logistic.predict(inputData, {operating_point => operating_point})
+
+
+You can check the
+`Operating point's predictions <#operating-point's-predictions>`_ section
+to learn about
+operating points. For logistic regressions, the only available kind is
+``probability``, that sets the threshold of probability to be reached for the
+prediction to be the positive class.
+
+
+Local Deepnet
+-------------
+
+You can also instantiate a local version of a remote Deepnet.
+
+.. code-block:: ruby
+
+    local_deepnet = BigML::Deepnet.new(
+        'deepnet/502fdbff15526876610022435')
+
+This will retrieve the remote deepnet information,
+using an implicitly built
+``BigML()`` connection object (see the ``Authentication`` section for more
+details on how to set your credentials) and return a ``Deepnet``
+object that you can use to make local predictions. If you want to use a
+specfic connection object for the remote retrieval, you can set it as second
+parameter:
+
+.. code-block:: ruby
+
+    local_deepnet = Deepnet(
+        'deepnet/502fdbff15526876610602435',
+        api=BigML::Api.new(my_username, my_api_key))
+
+You can also reuse a remote Deepnet JSON structure
+as previously retrieved to build the
+local Deepnet object:
+
+.. code-block:: ruby
+
+    api = BigML::Api.new()
+    deepnet = api.get_deepnet(
+        'deepnet/502fdbff15526876610002435',
+        'limit=-1')
+
+    local_deepnet = BigML::Deepnet.new(deepnet)
+
+Note that in this example we used a ``limit=-1`` query string for the
+deepnet retrieval. This ensures that all fields are
+retrieved by the get method in the same call (unlike in the standard
+calls where the number of fields returned is limited).
+
+Local Deepnet Predictions
+-------------------------
+
+Using the local deepnet object, you can predict the prediction for
+an input data set:
+
+.. code-block:: ruby
+
+    local_deepnet.predict({"petal length" => 2, "sepal length" => 1.5,
+                           "petal width" => 0.5, "sepal width" => 0.7},
+                           {"full" => true})
+    {'distribution' => [
+        {'category' => u'Iris-virginica', 'probability' => 0.5041444478857267},
+        {'category' => u'Iris-versicolor', 'probability' => 0.46926542042788333},
+        {'category' => u'Iris-setosa', 'probability' => 0.02659013168639014}],
+        'prediction' => u'Iris-virginica', 'probability' => 0.5041444478857267}
+
+As you can see, the full prediction contains the predicted category and the
+associated probability. It also shows the distribution of probabilities for
+all the possible categories in the objective field. If you only need the
+predicted value, you can remove the ``full`` argument.
+
+To be consistent with the ``Model`` class interface, deepnets
+have also a ``predict_probability`` method, which takes
+the same argument as ``Model.predict``:
+``compact``.
+
+As with local Models, if ``compact`` is ``false`` (the default), the
+output is a list of maps, each with the keys ``prediction`` and
+``probability`` mapped to the class name and its associated
+probability.
+
+So, for example
+
+.. code-block:: ruby
+
+    local_deepnet.predict_probability({"petal length" => 2, "sepal length" => 1.5,
+                                       "petal width" => 0.5, "sepal width" => 0.7})
+
+    [{'prediction' => 'Iris-setosa', 'probability' => 0.02659013168639014},
+     {'prediction' => 'Iris-versicolor', 'probability' => 0.46926542042788333},
+     {'prediction' => 'Iris-virginica', 'probability' => 0.5041444478857267}]
+
+If ``compact`` is ``true``, only the probabilities themselves are
+returned, as a list in class name order, again, as is the case with
+local Models.
+
+Operating point predictions are also available for local deepnets and an
+example of it would be:
+
+.. code-block:: ruby
+
+    operating_point = {"kind" => "probability",
+                       "positive_class" => "true",
+                       "threshold" => 0.8}
+    prediction = local_deepnet.predict(inputData,
+                                       {"operating_point" => operating_point})
+
 
 Local Association
 -----------------
@@ -3761,7 +5021,7 @@ Local Association Sets
 Using the local association object, you can predict the association sets
 related to an input data set:
 
-.. code-block:: python
+.. code-block:: ruby
 
     local_association.association_set( \
         {"gender" => "Female", "genres" => "Adventure$Action", \
@@ -3811,6 +5071,157 @@ related to an input data set:
 As in the local model predictions, producing local association sets can be done
 independently of BigML servers, so no cost or connection latencies are
 involved.
+
+
+Local Topic Model
+-----------------
+
+You can also instantiate a local version of a remote topic model.
+
+.. code-block:: ruby
+
+    local_topic_model = BigML::TopicModel.new(
+        'topicmodel/502fdbcf15526876210042435')
+
+This will retrieve the remote topic model information,
+using an implicitly built
+``BigML()`` connection object (see the ``Authentication`` section for more
+details on how to set your credentials) and return a ``TopicModel``
+object that you can use to obtain local topic distributions.
+If you want to use a
+specfic connection object for the remote retrieval, you can set it as second
+parameter:
+
+.. code-block:: ruby
+
+    local_topic_model = BigML::TopicModel.new(
+        'topicmodel/502fdbcf15526876210042435',
+        api=BigML::Api.new(my_username, my_api_key))
+
+You can also reuse a remote topic model JSON structure
+as previously retrieved to build the
+local topic model object:
+
+.. code-block:: ruby
+
+    api = BigML::Api::new()
+    topic_model = api.get_topic_model(
+        'topicmodel/502fdbcf15526876210042435',
+         'limit=-1')
+
+    local_topic_model = BigML::TopicModel.new(topic_model)
+
+Note that in this example we used a ``limit=-1`` query string for the topic
+model retrieval. This ensures that all fields are retrieved by the get
+method in the
+same call (unlike in the standard calls where the number of fields returned is
+limited).
+
+
+Local Topic Distributions
+-------------------------
+
+Using the local topic model object, you can predict the local topic
+distribution for
+an input data set:
+
+.. code-block:: ruby
+
+    local_topic_model.distribution({"Message"=> "Our mobile phone is free"})
+    [   {   'name'=> u'Topic 00', 'probability'=> 0.002627154266498529},
+        {   'name'=> u'Topic 01', 'probability'=> 0.003257671290458176},
+        {   'name'=> u'Topic 02', 'probability'=> 0.002627154266498529},
+        {   'name'=> u'Topic 03', 'probability'=> 0.1968263976460698},
+        {   'name'=> u'Topic 04', 'probability'=> 0.002627154266498529},
+        {   'name'=> u'Topic 05', 'probability'=> 0.002627154266498529},
+        {   'name'=> u'Topic 06', 'probability'=> 0.13692728036990331},
+        {   'name'=> u'Topic 07', 'probability'=> 0.6419714165615805},
+        {   'name'=> u'Topic 08', 'probability'=> 0.002627154266498529},
+        {   'name'=> u'Topic 09', 'probability'=> 0.002627154266498529},
+        {   'name'=> u'Topic 10', 'probability'=> 0.002627154266498529},
+        {   'name'=> u'Topic 11', 'probability'=> 0.002627154266498529}]
+
+
+As you can see, the topic distribution contains the name of the
+possible topics in the model and the
+associated probabilities.
+
+Local Time Series
+-----------------
+
+You can also instantiate a local version of a remote time series.
+
+.. code-block:: ruby
+
+    local_time_series = BigML::TimeSeries.new(
+        'timeseries/502fdbcf15526876210042435')
+
+This will create a series of models from
+the remote time series information,
+using an implicitly built
+``BigML()`` connection object (see the ``Authentication`` section for more
+details on how to set your credentials) and return a ``TimeSeries``
+object that you can use to obtain local forecasts.
+If you want to use a
+specfic connection object for the remote retrieval, you can set it as second
+parameter:
+
+.. code-block:: ruby
+
+    local_time_series = BigML::TimeSeries.new( \
+        'timeseries/502fdbcf15526876210042435',
+         BigML::Api.new(my_username, my_api_key))
+
+You can also reuse a remote time series JSON structure
+as previously retrieved to build the
+local time series object:
+
+.. code-block:: ruby
+
+    api = BigML::Api.new()
+    time_series = api.get_time_series(
+        'timeseries/502fdbcf15526876210042435',
+         'limit=-1')
+
+    local_time_series = BigML::TimeSeries.new(time_series)
+
+Note that in this example we used a ``limit=-1`` query string for the topic
+model retrieval. This ensures that all fields are retrieved by the get
+method in the
+same call (unlike in the standard calls where the number of fields returned is
+limited).
+
+
+Local Forecasts
+---------------
+
+Using the local time series object, you can forecast any of the objective
+field values:
+
+.. code-block:: ruby
+
+    local_time_series.forecast({"Final"=> {"horizon"=> 5}, "Assignment"=> {
+        "horizon"=> 10, "ets_models"=> {"criterion"=> "aic", "limit"=> 2}}})
+    {u'000005'=> [
+        {'point_forecast'=> [68.53181, 68.53181, 68.53181, 68.53181, 68.53181],
+         'model'=> u'A,N,N'}],
+     u'000001'=> [{'point_forecast'=> [54.776650000000004, 90.00943000000001,
+                                     83.59285000000001, 85.72403000000001,
+                                     72.87196, 93.85872, 84.80786, 84.65522,
+                                     92.52545, 88.78403],
+                  'model'=> u'A,N,A'},
+                 {'point_forecast'=> [55.882820120000005, 90.5255466567616,
+                                     83.44908577909621, 87.64524353046498,
+                                     74.32914583152592, 95.12372848262932,
+                                     86.69298716626228, 85.31630744944385,
+                                     93.62385478607113, 89.06905451921818],
+                  'model'=> u'A,Ad,A'}]}
+
+
+As you can see, the forecast contains the ID of the forecasted field, the
+computed points and the name of the models meeting the criterion.
+For more details about the available parameters, please check the `API
+documentation <https://bigml.com/api/forecasts>`_.
 
 Multi Models
 ------------
@@ -3869,7 +5280,7 @@ When making predictions on a test set with a large number of models,
 separated file. It expects a list of input data values and the directory path
 to save the prediction files in.
 
-.. code-block:: python
+.. code-block:: ruby
 
     model.batch_predict([{"petal length" => 3, "petal width" => 1},
                          {"petal length" => 1, "petal width" => 5.1}],
@@ -4044,55 +5455,126 @@ to be retrieved and returning a local model object.
 
     # cache_get=cache_get
     local_ensemble = BigML::Ensemble.new(model_ids, nil, nil, cache_get)
+    
 
 Local Ensemble's Predictions
 ----------------------------
 
 As in the local model's case, you can use the local ensemble to create
 new predictions for your test data, and set some arguments to configure
-the final output of the ``predict`` method. By default, it will
-issue just the ensemble's final prediction. You can add the confidence to it by
-setting
-the ``with_confidence`` argument to True.
+the final output of the ``predict`` method.
+
+The predictions' structure will vary depending on the kind of
+ensemble used. For ``Decision Forests`` local predictions will just contain
+the ensemble's final prediction if no other argument is used.
 
 .. code-block:: ruby
 
     ensemble = BigML::Ensemble.new('ensemble/5143a51a37203f2cf7020351')
-    # with_confidence=true
-    ensemble.predict({"petal length" => 3, "petal width" => 1}, 
-                     {'with_confidence' => true})
+    ensemble.predict({"petal length" => 3, "petal width" => 1})
+    'Iris-versicolor'
 
-    ['Iris-versicolor', 0.91519]
-
-And you can add more information to the predictions in a JSON format using:
-
-- ``add_confidence=true`` includes the confidence of the prediction
-- ``add_distribution=true`` includes the distribution of predictions. This is
-                            built by merging the distributions of each of the
-                            nodes predicted by every model the ensemble is
-                            composed of
-- ``add_count=true`` includes the sum of instances of the nodes predicted by
-                     every model the ensemble is composed of
-- ``add_median=true`` for regression ensembles, it computes the prediction
-                      based on the median (instead of the usual mean)
-- ``add_min=true`` adds the minimum value in the prediction's
-                    distribution (for regressions only)
-- ``add_max=true`` adds the maximum value in the prediction's
-                   distribution (for regressions only)
+The final prediction of an ensemble is determined
+by aggregating or selecting the predictions of the individual models therein.
+For classifications, the most probable class is returned if no especial
+operating method is set. Using ``'full' => true`` you can see both the predicted
+output and the associated probability:
 
 .. code-block:: ruby
 
     ensemble = BigML::Ensemble.new('ensemble/5143a51a37203f2cf7020351')
+    ensemble.predict({"petal length" => 3, "petal width" => 1}, \
+                     {"full" => true})
 
-    # add_confidence = true, add_distribution=true
-    ensemble.predict({"petal length" => 3, "petal width" => 1},
-                     {"add_confidence" => true,
-                      "add_distribution" => true})
+    {'prediction' => u'Iris-versicolor',
+     'probability' => 0.98566}
 
-    {'distribution' => [[u'Iris-versicolor', 84]],
-     'confidence' => 0.91519,
-     'prediction' => u'Iris-versicolor',
-     'distribution_unit' => 'counts'}
+In general, the prediction in a classification
+will be one amongst the list of categories in the objective
+field. When each model in the ensemble
+is used to predict, each category has a confidence, a
+probability or a vote associated to this prediction.
+Then, through the collection
+of models in the
+ensemble, each category gets an averaged confidence, probabiity and number of
+votes. Thus you can decide whether to operate the ensemble using the
+``confidence``, the ``probability`` or the ``votes`` so that the predicted
+category is the one that scores higher in any of these quantities. The
+criteria can be set using the `operating_kind` option (default is set to
+``probability``):
+
+.. code-block:: ruby
+
+    ensemble.predict({"petal length" => 3, "petal width" => 1}, \
+                     {"operating_kind" => "votes"})
+
+Regression will generate a predictiona and an associated error, however
+``Boosted Trees`` don't have an associated confidence measure, so
+only the prediction will be obtained in this case.
+
+For consistency of interface with the ``Model`` class, as well as
+between boosted and non-boosted ensembles, local Ensembles again have
+a ``predict_probability`` method.  This takes the same optional
+arguments as ``Model.predict``: ``missing_strategy`` and
+``compact``. As with local Models, if ``compact`` is ``false`` (the default),
+the output is a list of maps, each with the keys ``prediction`` and
+``probability`` mapped to the class name and its associated
+probability.
+
+So, for example:
+
+.. code-block:: ruby
+
+    ensemble.predict_probability({"petal length" => 3, "petal width" => 1})
+
+    [{'category' => 'Iris-setosa', 'probability' => 0.006733220044732548},
+     {'category' => 'Iris-versicolor', 'probability' => 0.9824478534614787},
+     {'category' => 'Iris-virginica', 'probability' => 0.0108189264937886}]
+
+If ``compact`` is ``true``, only the probabilities themselves are
+returned, as a list in class name order, again, as is the case with
+local Models.
+
+Operating point predictions are also available for local ensembles and an
+example of it would be:
+
+.. code-block:: ruby
+
+    operating_point = {"kind" => "probability",
+                       "positive_class" => "true",
+                       "threshold" => 0.8};
+    prediction = local_ensemble.predict(inputData,
+                                        {"operating_point" => operating_point})
+
+You can check the
+`Operating point's predictions <#operating-point's-predictions>`_ section
+to learn about
+operating points. For ensembles, three kinds of operating points are available:
+``votes``, ``probability`` and ``confidence``. ``Votes`` will use as threshold
+the number of models in the ensemble that vote for the positive class.
+The other two are already explained in the above mentioned section.
+
+
+Local Supervised Model
+----------------------
+
+There's a general class that will allow you to predict using any supervised
+model resource, regardless of its particular type (model, ensemble,
+logistic regression or deepnet).
+
+The ``SupervisedModel`` object will retrieve the resource information and
+instantiate the corresponding local object, so that you can use its
+``predict`` method to produce local predictions:
+
+.. code-block:: ruby
+
+    local_supervised_1 = BigML::SupervisedModel.new( \
+        "logisticregression/5143a51a37203f2cf7020351")
+    local_supervised_2 =  BigML::SupervisedModel.new( \
+        "model/5143a51a37203f2cf7020351")
+    input_data = {"petal length" => 3, "petal width" => 1}
+    logistic_regression_prediction = local_supervised_1.predict(input_data)
+    model_prediction = local_supervised_2.predict(input_data)
 
 Fields
 ------
@@ -4240,7 +5722,7 @@ counts per field:
 .. code-block:: ruby
 
     {'000000' => 1}
-
+    
 
 Rule Generation
 ---------------
@@ -4349,11 +5831,4 @@ in this case shows only the data distribution and field importance sections.
 For local clusters, the ``local_cluster.summarize()`` method prints also the
 data distribution, the training data statistics per cluster and the basic
 intercentroid distance statistics
-
-Additional Information
-----------------------
-
-For additional information about the API, see the
-`BigML developer's documentation <https://bigml.com/developers>`_.
-
 
