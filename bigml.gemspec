@@ -21,6 +21,7 @@ Gem::Specification.new do |spec|
   spec.add_runtime_dependency     'pycall', '~>1.0', '>= 1.0.3'
   spec.add_runtime_dependency     'numo-narray', '~>0.9.1.2'
   spec.add_runtime_dependency     'ruby-stemmer','~>0.9.6'
+  spec.add_runtime_dependency     'nokogiri','~>1.8.2'
 
   spec.files         = Dir['lib/   *.rb'] + Dir['lib/**/*.rb']
   spec.executables   = spec.files.grep(%r{^bin/}).map{ |f| File.basename(f) }

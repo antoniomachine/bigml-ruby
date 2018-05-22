@@ -77,34 +77,10 @@ module BigML
        # FAILED
        resource = resource_structure(code, resource_id, location, resource, error)
   
-       if !resource_id.nil? 
-  
-          begin
-             status = get_status(resource) 
-          rescue
-             status['code'] = nil
-          end     
-
-          if ([BigML::FINISHED, BigML::FAULTY].include?(status['code']) and
-             !path.nil?) 
-            begin
-              resource_json=JSON.generate(resource)
-            rescue
-              puts "The resource has an invalid JSON format"
-            end
-
-            begin
-              resource_file_name = File.join(path, resource_id.gsub('/','_'))
-              File.open(resource_file_name, "w:UTF-8") do |f|
-                 f.write resource_json
-              end
-            rescue IOError
-              puts "Failed writing resource to " + resource_file_name
-            end         
- 
-          end
-
-       end
+       if !resource_id.nil? && !path.nil? && is_status_final(resource)
+         resource_file_name = File.join(path, resource_id.gsub('/','_'))
+         save_json(resource, resource_file_name)
+       end   
 
        return resource
 
@@ -304,6 +280,19 @@ module BigML
        return [BigML::FINISHED, BigML::FAULTY].include?(status['code'])
      end 
      
+     def save_json(resource, path)
+       # Stores the resource in the user-given path in a JSON format
+       # 
+       begin
+         resource_json = JSON.generate(resource)
+         return save(resource_json, path)
+       rescue IOError
+         puts "Failed writing resource to %s" % path
+       rescue ArgumentError
+         puts "The resource has an invalid JSON format"
+       end 
+     end 
+     
      def save(resource, path)
        # Stores the resource in the user-given path in a JSON format
        # 
@@ -312,15 +301,13 @@ module BigML
          path = BigML::Util::DFT_STORAGE_FILE % datestamp
        end 
        
-       begin
-         File.open(path, "w:UTF-8") do |resource_file|
-            resource_json = JSON.generate(resource)
-            resource_file.write resource_json
-         end
-         return path
-       rescue IOError
-         puts "Failed writing resource to " + resource_file_name
-       end      
+       check_dir(File.dirname(path))
+       
+       File.open(path, "w:UTF-8") do |resource_file|
+         resource_file.write resource
+       end
+       
+       return path
      end 
      
      # markdown_cleanup

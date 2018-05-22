@@ -94,7 +94,7 @@ module BigML
         return []
      end
 
-     return text.split(/#{regexp}/)
+     return text.split(/#{regexp}/).map{|it| it.strip()}
   end
 
   def self.get_unique_terms_data(terms, term_forms, tag_cloud)
@@ -385,30 +385,20 @@ module BigML
             end
           end
           
-          if self.by_id(input_data)
+          input_data.each do |key, value|
+            if !@fields.include?(key)
+              key = @inverted_fields.fetch(key, key)
+            end
             
-            input_data.each do |key, value|
-               if (@fields.include?(key) and (@objective_id.nil? or key !=  @objective_id) )
-                  new_input[key] = value
-               else
-                  unused_fields << key
-               end
-            end
-
-          else
-            # We no longer check that the input data keys match some of
-            # the dataset fields. We only remove the keys that are not
-            # used as predictors in the model
-            input_data.each do |key, value|
-               if @inverted_fields.key?(key.to_s) and 
-                  (@objective_id.nil? or @inverted_fields[key.to_s] != @objective_id) 
-                    new_input[@inverted_fields[key.to_s]] = value
-               else
-                  unused_fields << key
-               end
-            end
+            if (@fields.include?(key) and 
+                (@objective_id.nil? or key !=  @objective_id) )
+              new_input[key] = value
+            else
+              unused_fields << key
+            end  
             
           end
+            
           result = add_unused_fields ? [new_input, unused_fields] : new_input
           return result
 
@@ -417,18 +407,6 @@ module BigML
           return add_unused_fields ? [{}, []] : {}
         end
 
-     end
-     
-     def by_id(input_data)
-       # Checks whether the input_data is keyed by ID
-       #
-       input_data.each do |key,value|
-         if !@fields.include?(key)
-           return false
-         end 
-       end 
-       
-       return true
      end
 
   end

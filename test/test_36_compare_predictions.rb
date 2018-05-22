@@ -24,6 +24,7 @@ class Test36ComparePredictions < Test::Unit::TestCase
     data = [[File.dirname(__FILE__)+'/data/iris.csv', {"petal width" => 4}, '000004', 'Iris-virginica', {}],
             [File.dirname(__FILE__)+'/data/iris.csv', {"sepal length" => 4.1, "sepal width" => 2.4}, '000004', 'Iris-setosa', {}],
             [File.dirname(__FILE__)+'/data/iris_missing2.csv', {}, '000004', 'Iris-setosa', {}],
+            [File.dirname(__FILE__)+'/data/grades.csv', {}, '000005', 42.15474, {}],
             [File.dirname(__FILE__)+'/data/spam.csv', {}, '000000', 'ham', {}]
            ]
     puts

@@ -236,25 +236,19 @@ module BigML
        unused_fields = []
        new_input = {}
        if input_data.is_a?(Hash)
-         if self.by_id(input_data)
-           input_data.each do|key,value|
-             if @input_fields.include?(key)
-               new_input[key] = value
-             else
-               unused_fields << key
-             end   
-           end 
-         else
-           # We only remove the keys that are not
-           # used as objective fields in the model
-           input_data.each do|key,value|
-             if @inverted_fields.key?("key") and !@inverted_fields[key].nil?
-               new_input[@inverted_fields[key]] = value
-             else
-               unused_fields <<  key
-             end    
-           end 
-         end  
+         
+         input_data.each do |key, value|
+           if !@fields.include?(key)
+             key = @inverted_fields.fetch(key, key)
+           end
+           
+           if @fields.include?(key)
+             new_input[key] = value
+           else
+             unused_fields << key
+           end  
+           
+         end
          
          input_data.each do|key,value|
            value = self.normalize(value)

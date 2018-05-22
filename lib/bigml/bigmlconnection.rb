@@ -26,7 +26,7 @@ module BigML
   # Base URL
   BIGML_URL = 'PROTOCOL://DOMAIN/andromeda/'
 
-  # HTTP Status Codes from https://bigml.com/developers/status_codes
+  # HTTP Status Codes from https://bigml.com/api/status_codes
   HTTP_OK = 200
   HTTP_CREATED = 201
   HTTP_ACCEPTED = 202
@@ -549,9 +549,7 @@ module BigML
           
             error += "\nCouldn\'t find a %s matching the given id in %a. The most probable 
                       causes are:\n\n%s' - A typo in the %s\'s id.\n - The %s id cannot be accessed 
-                      with your credentials or was not created in %s.\n - The resource was created 
-                      in a mode (development or  production) that is not the one set in the  BigML 
-                      connection object by the corresponding flag.\n \nDouble-check your %s and  
+                      with your credentials or was not created in %s.\n \nDouble-check your %s and  
                       credentials info and retry." % [resource_type, @general_domain, alternate_message, 
                                           resource_type, resource_type, @general_domain, resource_type] 
             return error

@@ -28,11 +28,11 @@ module BigML
   MEAN = "mean"
   STANDARD_DEVIATION = "stdev"
 
-  def moments(amap)
+  def self.moments(amap)
     return amap[MEAN], amap[STANDARD_DEVIATION]
   end
 
-  def expand_terms(terms_list, input_terms)
+  def self.expand_terms(terms_list, input_terms)
     #
     #Builds a list of occurrences for all the available terms
     #
@@ -283,9 +283,15 @@ module BigML
       end
           
       if full
+        if !prediction.is_a?(Hash)
+          prediction = {"prediction" => prediction}
+        end
+        
         prediction.merge({"unused_fields" => unused_fields})
       else
-        prediction = prediction["prediction"]  
+        if prediction.is_a?(Hash)
+          prediction = prediction["prediction"]  
+        end  
       end
       
       return prediction
@@ -334,7 +340,7 @@ module BigML
       y_out = BigML::Laminar.propagate(input_array, layers)
 
       if @regression
-        y_mean, y_stdev = moments(model['output_exposition'])
+        y_mean, y_stdev = BigML::moments(model['output_exposition'])
         y_out = BigML::Laminar.destandardize(y_out, y_mean, y_stdev)
         return y_out[0][0]
       end
@@ -347,7 +353,7 @@ module BigML
       # Structuring prediction in a dictionary output
       #
       if @regression
-        return y_out
+        return y_out.to_f
       end    
 
       prediction = y_out[0].each_with_index.map { |n,i| [i,n] }.sort_by {|x| -x[1]}[0]

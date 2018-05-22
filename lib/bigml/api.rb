@@ -106,6 +106,8 @@ module BigML
          @forecast_url = @url + FORECAST_PATH
          @deepnet_url = @url + DEEPNET_PATH
          @configuration_url = @url + CONFIGURATION_PATH
+         @optiml_url = @url+OPTIML_PATH
+         @fusion_url = @url+FUSION_PATH
      end
      
      def connection_info()
@@ -228,7 +230,7 @@ module BigML
                ENSEMBLE_RE.match(resource_id) or CLUSTER_RE.match(resource_id) or
                ANOMALY_RE.match(resource_id) or TOPIC_MODEL_RE.match(resource_id) or 
 	       LOGISTIC_REGRESSION_RE.match(resource_id) or TIME_SERIES_RE.match(resource_id) or
-	       DEEPNET_RE.match(resource_id))
+	       DEEPNET_RE.match(resource_id) or FUSION_RE.match(resource_id) or OPTIML_RE.match(resource_id))
 
               out.puts "%s (%s bytes)" % [resource['object']['name'], resource['object']['size']]
 
@@ -2482,7 +2484,7 @@ module BigML
         if args.nil?
           args = {}
         end
-        create_args = {"configurations": configurations}.merge(args) 
+        create_args = {"configurations" => configurations}.merge(args)
           
         body = JSON.generate(create_args)
         return _create(@configuration_url, body)
@@ -2535,6 +2537,150 @@ module BigML
           return _create_remote_source(download_url, args)
         end 
      end  
+     
+     ##########################################################################
+     #
+     # fusions 
+     # https://bigml.com/developers/fusions
+     ##########################################################################
+     def create_fusion(models, args=nil, wait_time=3, retries=10)
+        # Creates a fusion from a list of supervised models
+
+        create_args = _set_create_from_models_args(models,BigML::SUPERVISED_PATHS, args, 
+                                                   wait_time, retries)
+
+        body = JSON.generate(create_args)
+        return _create(@fusion_url, body)
+     end
+     
+     def get_fusion(fusion, query_string='', shared_username=nil, shared_api_key=nil)
+       
+       #   Retrieves a fusion.
+       #
+       #   The model parameter should be a string containing the
+       #   fusion id or the dict returned by
+       #   create_fusion.
+       #   As a fusion is an evolving object that is processed
+       #   until it reaches the FINISHED or FAULTY state, the function will
+       #   return a dict that encloses the fusion
+       #   values and state info available at the time it is called.
+       #
+       #   If this is a shared fusion, the username and
+       #   sharing api key must also be provided.
+       #
+      
+        BigML::check_resource_type(fusion, FUSION_PATH, "A fusion id is needed.")
+        fusion_id = BigML::get_fusion_id(fusion)
+
+        unless fusion_id.nil?
+          return _get(@url+fusion_id, query_string,
+                     shared_username, shared_api_key)
+        end
+     end
+     
+     def fusion_is_ready(fusion, args={})
+       #Check whether a fusion's status is FINISHED.
+       BigML::check_resource_type(fusion, FUSION_PATH, "A fusion id is needed.")
+       resource = get_fusion(fusion, args.fetch("query_string", nil),
+                         args.fetch("shared_username", nil),
+                         args.fetch("shared_api_key", nil))
+       return resource_is_ready(resource)
+     end
+     
+     def list_fusions(query_string='')
+       # Lists all your fusions 
+       return _list(@fusion_url, query_string)
+     end
+     
+     def update_fusion(fusion, changes)
+       # Updates a fusion
+       BigML::check_resource_type(fusion, FUSION_PATH, "A fusion id is needed.")
+       fusion_id = BigML::get_fusion_id(fusion)
+       unless fusion_id.nil?
+          return _update(@url+fusion_id, JSON.generate(changes))
+       end
+     end
+     
+     def delete_fusion(fusion)
+       #Deletes a remote fusion permanently.
+       BigML::check_resource_type(fusion, FUSION_PATH, "A fusion id is needed.")
+       fusion_id = BigML::get_fusion_id(fusion)
+       unless fusion_id.nil?
+          return _delete(@url+fusion_id)
+       end
+     end
+     
+     ##########################################################################
+     #
+     # optiml's 
+     # https://bigml.com/developers/optimls
+     ##########################################################################
+     def create_optiml(datasets, args=nil, wait_time=3, retries=10)
+        # Creates a optiml from a dataset of a list of `datasets`
+
+        create_args = _set_create_from_datasets_args(datasets,args,
+                                                     wait_time, retries, nil)
+
+        body = JSON.generate(create_args)
+        return _create(@optiml_url, body)
+     end
+     
+     def get_optiml(optiml, query_string='', shared_username=nil, shared_api_key=nil)
+       
+       #   Retrieves a fusion.
+       #
+       #   The model parameter should be a string containing the
+       #   fusion id or the dict returned by
+       #   create_optiml.
+       #   As a fusion is an evolving object that is processed
+       #   until it reaches the FINISHED or FAULTY state, the function will
+       #   return a dict that encloses the fusion
+       #   values and state info available at the time it is called.
+       #
+       #   If this is a shared fusion, the username and
+       #   sharing api key must also be provided.
+       #
+      
+        BigML::check_resource_type(optiml, OPTIML_PATH, "An optiml id is needed.")
+        optiml_id = BigML::get_optiml_id(optiml)
+
+        unless optiml_id.nil?
+          return _get(@url+optiml_id, query_string,
+                     shared_username, shared_api_key)
+        end
+     end
+     
+     def optiml_is_ready(fusion, args={})
+       #Check whether a optiml's status is FINISHED.
+       BigML::check_resource_type(optiml, FUSION_PATH, "An optiml id is needed.")
+       resource = get_optiml(optiml, args.fetch("query_string", nil),
+                         args.fetch("shared_username", nil),
+                         args.fetch("shared_api_key", nil))
+       return resource_is_ready(resource)
+     end
+     
+     def list_optimls(query_string='')
+       # Lists all your optimls 
+       return _list(@optiml_url, query_string)
+     end
+     
+     def update_optiml(optiml, changes)
+       # Updates a configuration
+       BigML::check_resource_type(optiml, OPTIML_PATH, "An optiml id is needed.")
+       optiml_id = BigML::get_optiml_id(optiml)
+       unless optiml_id.nil?
+          return _update(@url+optiml_id, JSON.generate(changes))
+       end
+     end
+     
+     def delete_optiml(optiml)
+       #Deletes a remote optiml permanently.
+       BigML::check_resource_type(optiml, OPTIML_PATH, "An optiml id is needed.")
+       optiml_id = BigML::get_optiml_id(fusion)
+       unless optiml_id.nil?
+          return _delete(@url+optiml_id)
+       end
+     end
    
   end
 end  

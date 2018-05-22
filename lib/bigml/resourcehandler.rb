@@ -16,6 +16,7 @@
 
 require_relative 'bigmlconnection'
 require_relative 'util'
+require 'nokogiri'
 
 module BigML
 
@@ -71,8 +72,15 @@ module BigML
 
   def self.check_resource_type(resource, expected_resource, message=nil)
     #Checks the resource type.
+    
+    if expected_resource.is_a?(String)
+      expected_resources = [expected_resource]
+    else
+      expected_resources = expected_resource
+    end  
+      
     resource_type = get_resource_type(resource)
-    if expected_resource != resource_type
+    if !expected_resources.include?(resource_type)
         raise Exception, message+"\nFound "+resource_type
     end
   end 
@@ -207,6 +215,16 @@ module BigML
     return get_resource(BigML::FORECAST_PATH, forecast)
   end
 
+  def self.get_fusion_id(fusion)
+    # Returns an fusion/id.
+     return get_resource(BigML::FUSION_PATH, fusion)
+  end
+  
+  def self.get_optiml_id(optiml)
+    # Returns an optiml/id.
+     return get_resource(BigML::OPTIML_PATH, optiml)
+  end
+    
   def self.get_deepnet_id(deepnet)
     # Returns a deepnet/id
     return get_resource(BigML::DEEPNET_PATH, deepnet)
@@ -406,6 +424,34 @@ module BigML
         return create_args 
  
      end
+     
+     def _set_create_from_models_args(models, types, args=nil,
+                                      wait_time=3, retries=10, key=nil)
+        # Builds args dictionary for the create call from a list of models
+        model_ids = []
+        unless models.is_a?(Array)
+          origin_models=[models]
+        else
+          origin_models=models
+        end
+
+        origin_models.each do |model|
+           BigML::check_resource_type(model, types, "A list of model ids is needed to create the resource.")
+           model_ids << BigML::get_resource_id(model).gsub("shared/", "")
+           model = BigML::check_resource(model, nil, BigML::TINY_RESOURCE, wait_time, retries, true, self)
+        end 
+
+        create_args = {}
+
+        unless args.nil?
+           create_args = args.clone
+        end 
+      
+        create_args["models"]=model_ids
+
+        return create_args 
+ 
+     end
 
      def check_origins(dataset, model, args, model_types=nil,
                       wait_time=3, retries=10)
@@ -463,7 +509,7 @@ module BigML
 
      end
      
-     def export(resource, filename=None, args={})
+     def export(resource, filename=None, pmml=false, args={})
        
        # Retrieves a remote resource when finished and stores it
        # in the user-given file
@@ -479,11 +525,35 @@ module BigML
          raise ArgumentError, "A resource ID or structure is needed."
        end 
        
+       if pmml
+         if !BigML::PMML_MODELS.include?(resource_type)
+           raise ArgumentError, "Failed to export to PMML. Only some models can be exported to PMML."
+         end 
+       end
+        
        resource_id = BigML::get_resource_id(resource)
        
        if resource_id.nil?
           raise ArgumentError, "First agument is expected to be a valid resource ID or structure."
        else
+         
+         if pmml
+           # only models with no text fields can be exported
+           resource_info = self._get("%s%s" % [@url, resource_id],
+                                     BigML::TINY_RESOURCE)
+           field_types = resource_info["object"].fetch("dataset_field_types", {})
+           
+           if field_types.fetch("items", 0) > 0 or field_types.fetch("text", 0) > 0
+             raise ArgumentError, "Failed to export to PMML. Models with text and 
+                                   items fields cannot be exported to PMML."
+           end
+           
+           if args.key?("query_string")
+             args["query_string"] += ";pmml=yes"
+           else
+             args["query_string"] = "pmml=yes"
+           end  
+         end 
          
          resource_info = self._get("#{@url}#{resource_id}", 
                                     args.key?('query_string') ? args['query_string'] : nil,
@@ -507,7 +577,13 @@ module BigML
            end 
          end
          
-         return BigML::Util::save(resource_info, filename)
+         if pmml and resource_info.fetch("object", {}).key?("pmml")
+            resource_info = resource_info["object"]["pmml"]
+            resource_info = Nokogiri::XML(resource_info).to_xml(:indent => 2)
+            return BigML::Util::save(resource_info, filename)
+         end
+         
+         return BigML::Util::save_json(resource_info, filename)
        end
 
      end

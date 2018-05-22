@@ -126,6 +126,7 @@ module BigML
           end    
           
         end  
+        
         if preds.to_a[0].size > 1
           total = preds.to_a.map{|i| i.inject(0) {|sum,x|sum+x}}
           
@@ -138,7 +139,12 @@ module BigML
           preds=result
           
         else
-          preds = preds.to_a.map {|x| x/model.size }
+
+          result = []
+          preds.to_a.each do |p|
+            result << p.map{|x| x/model.size }
+          end 
+          preds=result
         end
         
         return preds

@@ -2,6 +2,12 @@
 
 History
 -------
+0.0.5 (2018-05-23)
+~~~~~~~~~~~~~~~~~~
+- Fixing bug when unused field IDs are used in local prediction inputs.
+- Adding methods for the REST calls to OptiMLs and Fusions
+- Adding the option to `export PMML models when available.
+
 0.0.3 (2016-08-31)
 ~~~~~~~~~~~~~~~~~~
 

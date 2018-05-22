@@ -2769,6 +2769,298 @@ The JSON structure for a time series is:
         'white_box'=> false}
         
 
+OptiMLs
+-------
+
+An OptiML is the result of an automated optimization process to find the
+best model (type and configuration) to solve a particular
+classification or regression problem.
+
+The selection process automates the usual time-consuming task of trying
+different models and parameters and evaluating their results to find the
+best one. Using the OptiML, non-experts can build top-performing models.
+
+You can create an OptiML selecting the ojective field to be predicted, the
+evaluation metric to be used to rank the models tested in the process and
+a maximum time for the task to be run.
+
+The JSON structure for an OptiML is:
+
+.. code-block:: ruby
+
+    {   'category'=> 0,
+        'code'=> 200,
+        'configuration'=> nil,
+        'configuration_status'=> false,
+        'created'=> '2018-05-17T20=>23=>00.060000',
+        'creator'=> 'mmartin',
+        'dataset'=> 'dataset/5afdb7009252732d930009e8',
+        'dataset_status'=> true,
+        'datasets'=> [   'dataset/5afde6488bf7d551ee00081c',
+                         'dataset/5afde6488bf7d551fd00511f',
+                         'dataset/5afde6488bf7d551fe002e0f',
+                            ...
+                         'dataset/5afde64d8bf7d551fd00512e'],
+        'description'=> '',
+        'evaluations'=> [   'evaluation/5afde65c8bf7d551fd00514c',
+                            'evaluation/5afde65c8bf7d551fd00514f',
+                            ...
+                            'evaluation/5afde6628bf7d551fd005161'],
+        'excluded_fields'=> [],
+        'fields_meta'=> {   'count'=> 5,
+                            'limit'=> 1000,
+                            'offset'=> 0,
+                            'query_total'=> 5,
+                            'total'=> 5},
+        'input_fields'=> ['000000', '000001', '000002', '000003'],
+        'model_count'=> {   'logisticregression'=> 1, 'model'=> 8, 'total'=> 9},
+        'models'=> [   'model/5afde64e8bf7d551fd005131',
+                       'model/5afde64f8bf7d551fd005134',
+                       'model/5afde6518bf7d551fd005137',
+                       'model/5afde6538bf7d551fd00513a',
+                       'logisticregression/5afde6558bf7d551fd00513d',
+                       ...
+                       'model/5afde65a8bf7d551fd005149'],
+        'models_meta'=> {   'count'=> 9, 'limit'=> 1000, 'offset'=> 0, 'total'=> 9},
+        'name'=> 'iris',
+        'name_options'=> '9 total models (logisticregression=> 1, model=> 8), metric=max_phi, model candidates=18, max. training time=300',
+        'objective_field'=> '000004',
+        'objective_field_details'=> {   'column_number'=> 4,
+                                        'datatype'=> 'string',
+                                        'name'=> 'species',
+                                        'optype'=> 'categorical',
+                                        'order'=> 4},
+        'objective_field_name'=> 'species',
+        'objective_field_type'=> 'categorical',
+        'objective_fields'=> ['000004'],
+        'optiml'=> {   'created_resources'=> {   'dataset'=> 10,
+                                                 'logisticregression'=> 11,
+                                                 'logisticregression_evaluation'=> 11,
+                                                 'model'=> 29,
+                                                 'model_evaluation'=> 29},
+                       'datasets'=> [   {   'id'=> 'dataset/5afde6488bf7d551ee00081c',
+                                            'name'=> 'iris',
+                                            'name_options'=> '120 instances, 5 fields (1 categorical, 4 numeric), sample rate=0.8'},
+                                        {   'id'=> 'dataset/5afde6488bf7d551fd00511f',
+                                            'name'=> 'iris',
+                                            'name_options'=> '30 instances, 5 fields (1 categorical, 4 numeric), sample rate=0.2, out of bag'},
+                                        {   'id'=> 'dataset/5afde6488bf7d551fe002e0f',
+                                            'name'=> 'iris',
+                                            'name_options'=> '120 instances, 5 fields (1 categorical, 4 numeric), sample rate=0.8'},
+                                        ...
+                                        {   'id'=> 'dataset/5afde64d8bf7d551fd00512e',
+                                            'name'=> 'iris',
+                                            'name_options'=> '120 instances, 5 fields (1 categorical, 4 numeric), sample rate=0.8'}],
+                       'fields'=> {   '000000'=> {   'column_number'=> 0,
+                                                     'datatype'=> 'double',
+                                                     'name'=> 'sepal length',
+                                                     'optype'=> 'numeric',
+                                                     'order'=> 0,
+                                                     'preferred'=> true,
+                                                     'summary'=> {   'bins'=> [   [   4.3,
+                                                                                      1],
+                                                                                    ...
+                                                                                  [   7.9,
+                                                                                      1]],
+                                                                     ...
+                                                                     'sum'=> 179.9,
+                                                                     'sum_squares'=> 302.33,
+                                                                     'variance'=> 0.58101}},
+                                      '000004'=> {   'column_number'=> 4,
+                                                     'datatype'=> 'string',
+                                                     'name'=> 'species',
+                                                     'optype'=> 'categorical',
+                                                     'order'=> 4,
+                                                     'preferred'=> true,
+                                                     'summary'=> {   'categories'=> [   [   'Iris-setosa',
+                                                                                            50],
+                                                                                        [   'Iris-versicolor',
+                                                                                            50],
+                                                                                        [   'Iris-virginica',
+                                                                                            50]],
+                                                                     'missing_count'=> 0},
+                                                     'term_analysis'=> {   'enabled'=> true}}},
+                       'max_training_time'=> 300,
+                       'metric'=> 'max_phi',
+                       'model_types'=> ['model', 'logisticregression'],
+                       'models'=> [   {   'evaluation'=> {   'id'=> 'evaluation/5afde65c8bf7d551fd00514c',
+                                                             'info'=> {   'accuracy'=> 0.96667,
+                                                                          'average_area_under_pr_curve'=> 0.97867,
+                                                                          ...
+                                                                          'per_class_statistics'=> [   {   'accuracy'=> 1,
+                                                                                                           'area_under_pr_curve'=> 1,
+                                                                                                           ...
+                                                                                                           'spearmans_rho'=> 0.82005}]},
+                                                             'metric_value'=> 0.95356,
+                                                             'metric_variance'=> 0.00079,
+                                                             'name'=> 'iris vs. iris',
+                                                             'name_options'=> '279-node, deterministic order, operating kind=probability'},
+                                          'evaluation_count'=> 3,
+                                          'id'=> 'model/5afde64e8bf7d551fd005131',
+                                          'importance'=> [   [   '000002',
+                                                                 0.70997],
+                                                             [   '000003',
+                                                                 0.27289],
+                                                             [   '000000',
+                                                                 0.0106],
+                                                             [   '000001',
+                                                                 0.00654]],
+                                          'kind'=> 'model',
+                                          'name'=> 'iris',
+                                          'name_options'=> '279-node, deterministic order'},
+                                      {   'evaluation'=> {   'id'=> 'evaluation/5afde65c8bf7d551fd00514f',
+                                                             'info'=> {   'accuracy'=> 0.93333,
+
+                                                            ...
+                                                             [   '000001',
+                                                                 0.02133]],
+                                          'kind'=> 'model',
+                                          'name'=> 'iris',
+                                          'name_options'=> '12-node, randomize, deterministic order, balanced'}],
+                       'number_of_model_candidates'=> 18,
+                       'recent_evaluations'=> [   0.90764,
+                                                  0.94952,
+                                                  ...
+                                                  0.90427],
+                       'search_complete'=> true,
+                       'summary'=> {   'logisticregression'=> {   'best'=> 'logisticregression/5afde6558bf7d551fd00513d',
+                                                                  'count'=> 1},
+                                       'model'=> {   'best'=> 'model/5afde64e8bf7d551fd005131',
+                                                     'count'=> 8}}},
+        'private'=> true,
+        'project'=> nil,
+        'resource'=> 'optiml/5afde4a42a83475c1b0008a2',
+        'shared'=> false,
+        'size'=> 3686,
+        'source'=> 'source/5afdb6fb9252732d930009e5',
+        'source_status'=> true,
+        'status'=> {   'code'=> 5,
+                       'elapsed'=> 448878.0,
+                       'message'=> 'The optiml has been created',
+                       'progress'=> 1},
+        'subscription'=> false,
+        'tags'=> [],
+        'test_dataset'=> nil,
+        'type'=> 0,
+        'updated'=> '2018-05-17T20=>30=>29.063000'}
+
+
+Fusions
+-------
+
+A Fusion is a special type of composed resource for which all
+submodels satisfy the following constraints: they're all either
+classifications or regressions over the same kind of data or
+compatible fields, with the same objective field. Given those
+properties, a fusion can be considered a supervised model,
+and therefore one can predict with fusions and evaluate them.
+Ensembles can be viewed as a kind of fusion subject to the additional
+constraints that all its submodels are tree models that, moreover,
+have been built from the same base input data, but sampled in particular ways.
+
+The model types allowed to be a submodel of a fusion are:
+deepnet, ensemble, fusion, model, and logistic regression.
+
+The JSON structure for an Fusion is:
+
+.. code-block:: ruby
+
+    {
+        "category"=> 0,
+        "code"=> 200,
+        "configuration"=> null,
+        "configuration_status"=> false,
+        "created"=> "2018-05-09T20=>11=>05.821000",
+        "credits_per_prediction"=> 0,
+        "description"=> "",
+        "fields_meta"=> {
+            "count"=> 5,
+            "limit"=> 1000,
+            "offset"=> 0,
+            "query_total"=> 5,
+            "total"=> 5
+        },
+        "fusion"=> {
+            "models"=> [
+                {
+                    "id"=> "ensemble/5af272eb4e1727d378000050",
+                    "kind"=> "ensemble",
+                    "name"=> "Iris ensemble",
+                    "name_options"=> "boosted trees, 1999-node, 16-iteration, deterministic order, balanced"
+                },
+                {
+                    "id"=> "model/5af272fe4e1727d3780000d6",
+                    "kind"=> "model",
+                    "name"=> "Iris model",
+                    "name_options"=> "1999-node, pruned, deterministic order, balanced"
+                },
+                {
+                    "id"=> "logisticregression/5af272ff4e1727d3780000d9",
+                    "kind"=> "logisticregression",
+                    "name"=> "Iris LR",
+                    "name_options"=> "L2 regularized (c=1), bias, auto-scaled, missing values, eps=0.001"
+                }
+            ]
+        },
+        "importance"=> {
+            "000000"=> 0.05847,
+            "000001"=> 0.03028,
+            "000002"=> 0.13582,
+            "000003"=> 0.4421
+        },
+        "model_count"=> {
+            "ensemble"=> 1,
+            "logisticregression"=> 1,
+            "model"=> 1,
+            "total"=> 3
+        },
+        "models"=> [
+            "ensemble/5af272eb4e1727d378000050",
+            "model/5af272fe4e1727d3780000d6",
+            "logisticregression/5af272ff4e1727d3780000d9"
+        ],
+        "models_meta"=> {
+            "count"=> 3,
+            "limit"=> 1000,
+            "offset"=> 0,
+            "total"=> 3
+        },
+        "name"=> "iris",
+        "name_options"=> "3 total models (ensemble=> 1, logisticregression=> 1, model=> 1)",
+        "number_of_batchpredictions"=> 0,
+        "number_of_evaluations"=> 0,
+        "number_of_predictions"=> 0,
+        "number_of_public_predictions"=> 0,
+        "objective_field"=> "000004",
+        "objective_field_details"=> {
+            "column_number"=> 4,
+            "datatype"=> "string",
+            "name"=> "species",
+            "optype"=> "categorical",
+            "order"=> 4
+        },
+        "objective_field_name"=> "species",
+        "objective_field_type"=> "categorical",
+        "objective_fields"=> [
+            "000004"
+        ],
+        "private"=> true,
+        "project"=> null,
+        "resource"=>"fusion/59af8107b8aa0965d5b61138",
+        "shared"=> false,
+        "status"=> {
+            "code"=> 5,
+            "elapsed"=> 8420,
+            "message"=> "The fusion has been created",
+            "progress"=> 1
+        },
+        "subscription"=> false,
+        "tags"=> [],
+        "type"=> 0,
+        "updated"=> "2018-05-09T20=>11=>14.258000"
+    }
+
+
 Whizzml Resources
 -----------------
 
@@ -3106,6 +3398,8 @@ update the contents of the associated variable:
     api.status(batch_topic_distribution)
     api.status(time_series)
     api.status(forecast)
+    api.status(optiml)
+    api.status(fusion)
     api.status(script)
     api.status(execution)
     api.status(library)
@@ -3482,6 +3776,50 @@ list of ids as the first argument in the api call
 
     time_series = api.create_time_series([dataset1, dataset2],
         {"name" => "my time series", "horizon" => 10})
+
+Creating OptiML
+~~~~~~~~~~~~~~~
+
+To create an OptiML, the only required argument is a dataset id.
+You can also
+include in the request all the additional arguments accepted by BigML
+and documented in the `OptiML section of the Developer's
+documentation <https://bigml.com/api/optimls>`_.
+
+For example, to create an OptiML which optimizes the accuracy of the model you
+can use the following method
+
+.. code-block:: ruby
+
+    optiml = api.create_optiml(dataset, {
+        "name" => "my optiml", "metric" => "accuracy"})
+
+The OptiML is then scheduled for creation, and you can retrieve its
+status at any time by means of ``api.status(optiml)``.
+
+
+Creating Fusion
+~~~~~~~~~~~~~~~
+
+To create a Fusion, the only required argument is a list of models.
+You can also
+include in the request all the additional arguments accepted by BigML
+and documented in the `Fusion section of the Developer's
+documentation <https://bigml.com/api/fusions>`_.
+
+For example, to create a Fusion you can use this connection method:
+
+.. code-block:: python
+
+    fusion = api.create_fusion(["model/5af06df94e17277501000010"
+                                "model/5af06df84e17277502000019"
+                                "deepnet/5af06df84e17277502000016"
+                                "ensemble/5af06df74e1727750100000d"],
+                                {"name" => "my fusion"})
+
+The Fusion is then scheduled for creation, and you can retrieve its
+status at any time by means of ``api.status(fusion)``.
+
 
 Creating predictions
 ~~~~~~~~~~~~~~~~~~~~
@@ -3894,6 +4232,8 @@ You can list resources with the appropriate api method:
     api.list_scripts()
     api.list_libraries()
     api.list_executions()
+    api.list_fusions()
+    api.list_optimls()
 
 
 you will receive a dictionary with the following keys:
@@ -4034,6 +4374,8 @@ problems or one of the HTTP standard error codes otherwise.
     api.update_script(script, {"name" => "new name"})
     api.update_library(library, {"name" => "new name"})
     api.update_execution(execution, {"name" => "new name"})
+    api.update_optiml(optiml, {"name" => "new name"})
+    api.update_fusion(fusion, {"name" => "new name"})
 
 Updates can change resource general properties, such as the ``name`` or
 ``description`` attributes of a dataset, or specific properties. As an example,
@@ -4121,6 +4463,8 @@ each type of resource.
     api.delete_script(script)
     api.delete_library(library)
     api.delete_execution(execution)
+    api.delete_fusion(fusion)
+    api.delete_optiml(optiml)
 
 Each of the calls above will return a dictionary with the following
 keys:
@@ -4210,6 +4554,14 @@ exported to a JSON file in your file system using the ``export`` method.
 
     api.export('model/5143a51a37203f2cf7000956',
                'my_dir/my_model.json')
+
+In the case of models that can be represented in a `PMML` syntax, the
+export method can be used to produce the corresponding `PMML` file
+
+.. code-block:: ruby
+    api.export('model/5143a51a37203f2cf7000956',
+               'my_dir/my_model.pmml',
+               true)
 
 The contents of the generated file can be used just as the remote model
 to generate predictions. As you'll see in next section, the local ``Model``
