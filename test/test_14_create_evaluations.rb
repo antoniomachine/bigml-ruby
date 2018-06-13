@@ -88,19 +88,19 @@ class TestCreateEvaluations < Test::Unit::TestCase
                           'number_of_models' => 5,
                            'measure' => 'average_phi',
                            'value' => '0.98029',
-                           'params' => {"operating_kind": "votes"},
+                           'params' => {"operating_kind" => "votes"},
                            'tlp' => 1},
             {'filename' => File.dirname(__FILE__)+'/data/iris.csv',
                             'number_of_models' => 5,
                             'measure' => 'average_phi',
                             'value' => '0.97064',
-                            'params' => {"operating_kind": "probability"},
+                            'params' => {"operating_kind" => "probability"},
                             'tlp' => 1},            
             {'filename' => File.dirname(__FILE__)+'/data/iris.csv',
                             'number_of_models' => 5,
                             'measure' => 'average_phi',
                             'value' => '0.95061',
-                            'params' => {"operating_kind": "confidence"},
+                            'params' => {"operating_kind" => "confidence"},
                             'tlp' => 1},
            ]
                          
@@ -191,6 +191,56 @@ class TestCreateEvaluations < Test::Unit::TestCase
        
        puts "When I create an evaluation for the ensemble with the dataset"
        evaluation = @api.create_evaluation(logisticregression, dataset)
+
+       puts "And I wait until the evaluation is ready"
+       assert_equal(BigML::HTTP_CREATED, evaluation["code"])
+       assert_equal(@api.ok(evaluation), true)
+       
+       puts "Then the measured #{item['measure']} is #{item['value']}"
+       evaluation = @api.get_evaluation(evaluation)
+       assert_equal(item["value"].to_f, evaluation["object"]["result"]["model"][item["measure"]].to_f)
+       
+    end
+  end
+  
+  # Scenario4: Successfully creating an evaluation for a deepnet 
+  def test_scenario4
+    data = [{'filename' => File.dirname(__FILE__)+'/data/iris.csv',
+             'measure' => 'average_phi',
+             'value' => 0.95007}]
+
+    puts 
+    puts "Scenario4: Successfully creating an evaluation for a deepnet"
+
+    data.each do |item|
+       puts
+       puts "Given I create a data source uploading a " + item["filename"] + " file"
+       
+       source = @api.create_source(item["filename"], {'name'=> 'source_test', 'project'=> @project["resource"]})
+
+       puts "And I wait until the source is ready"
+       assert_equal(BigML::HTTP_CREATED, source["code"])
+       assert_equal(1, source["object"]["status"]["code"])
+       assert_equal(@api.ok(source), true)
+
+       puts "And I create dataset with local source"
+       dataset=@api.create_dataset(source)
+
+       puts "And I wait until the dataset is ready"
+       assert_equal(BigML::HTTP_CREATED, dataset["code"])
+       assert_equal(1, dataset["object"]["status"]["code"])
+       assert_equal(@api.ok(dataset), true)
+
+       puts "And I create model"
+       deepnet=@api.create_deepnets(dataset)
+
+       puts "And I wait until the deepnet is ready"
+       assert_equal(BigML::HTTP_CREATED, deepnet["code"])
+       assert_equal(1, deepnet["object"]["status"]["code"])
+       assert_equal(@api.ok(deepnet), true)
+       
+       puts "When I create an evaluation for the deepnet with the dataset"
+       evaluation = @api.create_evaluation(deepnet, dataset)
 
        puts "And I wait until the evaluation is ready"
        assert_equal(BigML::HTTP_CREATED, evaluation["code"])

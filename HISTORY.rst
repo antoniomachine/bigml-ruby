@@ -2,6 +2,11 @@
 
 History
 -------
+0.0.6 (2018-06-13)
+~~~~~~~~~~~~~~~~~~
+- Adding batch predictions for fusion resources.
+- Adding predictions and evaluations for fusion resources.
+
 0.0.5 (2018-05-23)
 ~~~~~~~~~~~~~~~~~~
 - Fixing bug when unused field IDs are used in local prediction inputs.

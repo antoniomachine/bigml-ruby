@@ -714,64 +714,40 @@ module BigML
        # - a simple logistic regression model
        # - an ensemble
        # - a deepnet
+       # - a fusion
        # The by_name argument is now deprecated. It will be removed.
 
-       deepnet_id = nil
-       logistic_regression_id = nil 
-       ensemble_id = nil 
        model_id = nil
 
        resource_type = BigML::get_resource_type(model)
-       if resource_type == ENSEMBLE_PATH
-          ensemble_id = BigML::get_ensemble_id(model)
-          unless ensemble_id.nil?
-           BigML::check_resource(ensemble_id, nil, BigML::TINY_RESOURCE,
-                                 wait_time, retries,
-                                 true, self)
-          end
-       elsif resource_type == MODEL_PATH
-          model_id = BigML::get_model_id(model)
-          BigML::check_resource(model_id, nil, BigML::TINY_RESOURCE,
-                                wait_time,retries,
-                                true, self)
-
-       elsif resource_type == LOGISTIC_REGRESSION_PATH
-          logistic_regression_id = BigML::get_logisticregression_id(model)
-          BigML::check_resource(logistic_regression_id, nil, BigML::TINY_RESOURCE,
-                                wait_time, retries,
-                                true, self)
        
-       elsif resource_type == DEEPNET_PATH
-         deepnet_id = BigML::get_deepnet_id(model)
-         BigML::check_resource(deepnet_id, nil, BigML::TINY_RESOURCE,
+       if !SUPERVISED_PATHS.include?(resource_type)
+         raise Exception, "A supervised model resource id is needed to create a prediction. %s found. " % resource_type
+       end
+       
+       model_id = BigML::get_resource_id(model)
+       
+       if !model_id.nil?
+         BigML::check_resource(model_id, nil, BigML::TINY_RESOURCE,
                                wait_time, retries,
                                true, self)
-       else
-          raise Exception, "A model or ensemble id is needed to create a prediction "+resource_type + " found."
-
+       end 
+       
+       input_data = input_data.nil? ? {} : input_data 
+       create_args = {}
+       unless args.nil?
+         create_args=args.clone
        end
-  
-        input_data = input_data.nil? ? {} : input_data 
-        create_args = {}
-        unless args.nil?
-          create_args=args.clone
-        end
 
-        create_args["input_data"] = input_data
-     
-        if !model_id.nil?
-          create_args["model"] = model_id 
-        elsif !ensemble_id.nil?
-          create_args["ensemble"] = ensemble_id
-        elsif !logistic_regression_id.nil?
-          create_args["logisticregression"] = logistic_regression_id
-        elsif !deepnet_id.nil?
-          create_args["deepnet"] = deepnet_id
-        end
+       create_args["input_data"] = input_data
+       
+       if !model_id.nil?
+         create_args["model"] = model_id 
+       end
+       
+       body = JSON.generate(create_args)
 
-        body = JSON.generate(create_args)
-
-        return _create(@prediction_url, body, @verify)
+       return _create(@prediction_url, body, @verify)  
 
      end
 
@@ -1391,9 +1367,8 @@ module BigML
 
         create_args = args.nil? ? {} : args.clone
 
-        model_types = [ENSEMBLE_PATH, MODEL_PATH, LOGISTIC_REGRESSION_PATH, DEEPNET_PATH]
         origin_resources_checked = check_origins(dataset, model, create_args, 
-                                                 model_types,
+                                                 SUPERVISED_PATHS,
                                                  wait_time, retries)
         if origin_resources_checked
            body = JSON.generate(create_args)
@@ -1519,8 +1494,7 @@ module BigML
         # Creates a new evaluation.
         create_args = args.nil? ? {} : args.clone
  
-        model_types = [ENSEMBLE_PATH, MODEL_PATH, LOGISTIC_REGRESSION_PATH, 
-                       TIME_SERIES_PATH, DEEPNET_PATH]
+        model_types = SUPERVISED_PATHS+[TIME_SERIES_PATH]
         origin_resources_checked = check_origins(dataset, model, create_args, 
                                                  model_types, wait_time, retries)
 

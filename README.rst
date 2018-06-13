@@ -3840,7 +3840,10 @@ To see the prediction you can use ``pprint``:
 .. code-block:: ruby
 
     api.pprint(prediction)
-    
+
+Predictions can be created using any supervised model (model, ensemble,
+logistic regression, deepnet and fusion) as first argument.
+
 Creating centroids
 ~~~~~~~~~~~~~~~~~~
 
@@ -3947,6 +3950,9 @@ object instead of the model as first argument:
 .. code-block:: ruby
 
     evaluation = api.create_evaluation(ensemble, dataset)
+
+Evaluations can be created using any supervised model (including time series)
+as first argument.
 
 Creating ensembles
 ~~~~~~~~~~~~~~~~~~
