@@ -633,7 +633,7 @@ module BigML
              end 
            end 
            
-           return BigML::Util::save(resource_info, filename)
+           return BigML::Util::save_json(resource_info, filename)
            
          else
            raise ArgumentError, "No %s found with tags %s." % [resource_type,

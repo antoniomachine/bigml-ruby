@@ -25,7 +25,7 @@ module BigML
                        "logisticregression" => BigML::Logistic, 
                        "deepnet" => BigML::Deepnet}
   
-  def self.extract_id(model)
+  def self.extract_id(model, api)
     #
     # Extract the resource id from:
     #    - a resource ID string
@@ -45,7 +45,7 @@ module BigML
         resource_id = BigML::get_resource_id(model)
         if resource_id.nil?
           if !model.index("model/").nil?
-            raise Exception, BigML::Api.new().error_message(model, 'model', 'get')
+            raise Exception, api.error_message(model, 'model', 'get')
           else
             raise Exception, "Failed to open the expected JSON file at %s " + model
           end    
@@ -67,7 +67,10 @@ module BigML
     # Uses any BigML remote supervised model to build a local version
     # that can be used to generate predictions locally.
     def initialize(model, api=nil)
-      resource_id, model = BigML::extract_id(model)
+      if api.nil?
+        api = BigML::Api.new(nil, nil, false, false, false, STORAGE)
+      end
+      resource_id, model = BigML::extract_id(model, api)
       resource_type = BigML::get_resource_type(resource_id)
       @local_model = BigML::COMPONENT_CLASSES[resource_type].new(model, api)
       
@@ -82,6 +85,11 @@ module BigML
     def predict(data_input, options={})
       return @local_model.predict(data_input, options)
     end
+    
+    def predict_probability(data_input, options={})
+      return @local_model.predict_probability(data_input, options)
+    end
+    
   end
   
 end

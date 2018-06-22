@@ -72,6 +72,10 @@ module BigML
       @preprocess = []
       @optimizer = nil
       @missing_numerics = false
+      
+      if api.nil?
+        api = BigML::Api.new(nil, nil, false, false, false, STORAGE)
+      end  
     
       if deepnet.is_a?(String)
         if File.file?(deepnet)
@@ -104,11 +108,7 @@ module BigML
       end
       
       if !(deepnet.is_a?(Hash) and deepnet.key?('resource') and !deepnet['resource'].nil?) 
-         if api.nil?
-            api = BigML::Api.new(nil, nil, false, false, false, STORAGE, nil)
-         end
          query_string = ONLY_MODEL
-
          deepnet = BigML::retrieve_resource(api, @resource_id, query_string)
       else
          @resource_id =  BigML::get_deepnet_id(deepnet)
@@ -132,6 +132,7 @@ module BigML
           
             if !@regression
               @class_names = @fields[@objective_id]['summary']['categories'].map{|it|it[0]}.sort
+              @objective_categories = @fields[@objective_id]['summary']['categories'].map{|it|it[0]}
             end  
           
             @missing_numerics = deepnet.fetch('missing_numerics', false)
@@ -366,7 +367,11 @@ module BigML
       return prediction
     end
     
-    def predict_probability(input_data, compact=False)
+    def predict_probability(input_data, options={})
+      return _predict_probability(input_data, options.fetch("compact", false))
+    end
+    
+    def _predict_probability(input_data, compact=false)
       # Predicts a probability for each possible output class,
       # based on input values.  The input fields must be a dictionary
       # keyed by field name or field ID.
@@ -380,6 +385,12 @@ module BigML
       
       if @regression
         return self.predict(input_data, nil, nil, true)
+        prediction = self.predict(input_data, {"full" => !compact})
+        if compact
+          return [prediction]
+        else
+          return prediction
+        end    
       else
         distribution = self.predict(input_data, {"full" => true})['distribution']
 
@@ -411,7 +422,7 @@ module BigML
       kind = operating_kind.downcase
       
       if kind == "probability"
-          predictions = self.predict_probability(input_data, false)
+          predictions = self._predict_probability(input_data, false)
       else
           raise ArgumentError.new("Only probability is allowed as operating kind for deepnets.")
       end
@@ -429,7 +440,7 @@ module BigML
       kind, threshold, positive_class = BigML::parse_operating_point(
                     operating_point, ["probability"], @class_names)
           
-      predictions = self.predict_probability(input_data, false)
+      predictions = self._predict_probability(input_data, false)
       
       position = @class_names.index(positive_class)
       if predictions[position][kind] > threshold

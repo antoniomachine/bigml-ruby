@@ -193,6 +193,7 @@ module BigML
 
   # Minimum query string to get model fields
   TINY_RESOURCE = "full=false"
+  STORAGE = "./storage"
   COMPOSED_RESOURCES = ["ensemble"]
   LIST_LAST = "limit=1;full=yes;tags=%s"
   

@@ -55,7 +55,6 @@ class TestEnsemblePrediction < Test::Unit::TestCase
        puts "And I create a local Ensemble"
        local_ensemble = BigML::Ensemble.new(ensemble, @api)
        puts "When I create a local ensemble prediction with confidence for <%s>" % JSON.generate(data_input)
-
        prediction = local_ensemble.predict(data_input, {'full' => true}) 
 
        puts "Then the local prediction is <%s>" % prediction_result
@@ -66,7 +65,8 @@ class TestEnsemblePrediction < Test::Unit::TestCase
                                     prediction["confidence"].round(4) : 
                                     prediction["probability"].round(4))
 
-       probabilities = local_ensemble.predict_probability(data_input, BigML::LAST_PREDICTION, true)
+       probabilities = local_ensemble.predict_probability(data_input, {"missing_strategy" => BigML::LAST_PREDICTION, 
+                                                                       "compact" => true})
        
        puts "And the local probabilities are <%s>" % JSON.generate(probabilities_result)
        assert_equal(probabilities.map{|it| it.round(4)},probabilities_result.map{|it| it.round(4)})

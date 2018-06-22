@@ -80,6 +80,34 @@ module BigML
          @balance_fields = nil
          @regularization = nil
          old_coefficients = false
+         
+         if api.nil?
+           api = BigML::Api.new(nil, nil, false, false, false, STORAGE)
+         end
+         # the string can be a path to a JSON file
+         if logistic_regression.is_a?(String)
+           begin
+             if File.file?(logistic_regression)
+               File.open(logistic_regression, "r") do |logistic_regression_file|
+                 logistic_regression = JSON.parse(logistic_regression_file.read)
+                 @resource_id =  BigML::get_logisticregression_id(logistic_regression)
+                 if @resource_id.nil?
+                    raise ArgumentError, "The JSON file does not seem to contain a valid 
+                                          BigML logistic regression representation"
+                 end
+               end
+             else
+               @resource_id =  BigML::get_logisticregression_id(logistic_regression)
+               if @resource_id.nil?
+                 if !model.index('logisticregression/').nil?
+                     raise Exception, api.error_message(logistic_regression, 'logistic_regression', 'get')
+                 else
+                     raise Exception, "Failed to open the expected JSON file at %s" % [logistic_regression]
+                 end
+               end 
+             end 
+           end
+         end
 
          # checks whether the information needed for local predictions is in
          # the first argument
@@ -93,18 +121,8 @@ module BigML
          if !(logistic_regression.is_a?(Hash) and 
              logistic_regression.include?('resource') and
               !logistic_regression['resource'].nil?)
-
-            if api.nil?
-               api = BigML::Api.new(nil, nil, false, false, false, BigML::STORAGE)
-            end
-
+              
             @resource_id = BigML::get_logisticregression_id(logistic_regression)
-            if @resource_id.nil?
-                raise Exception,
-                    api.error_message(logistic_regression,
-                                      'logistic_regression',
-                                      'get')
-            end
             query_string = BigML::ONLY_MODEL
             logistic_regression = BigML::retrieve_resource(
                 api, @resource_id, query_string)
@@ -192,6 +210,8 @@ module BigML
                 @class_names = []
               end    
               
+              # order matters
+              @objective_categories =  categories.collect {|category| category[0]}
               @class_names += categories.collect {|category| category[0]}.sort
               
 
@@ -217,8 +237,12 @@ module BigML
         return  b[criteria] > a[criteria] ? 1 : - 1
       
       end
-
-      def predict_probability(input_data, compact=false)
+      
+      def predict_probability(input_data, options={})
+        return _predict_probability(input_data, options.fetch("compact", false))
+      end
+      
+      def _predict_probability(input_data, compact=false)
         
         # Predicts a probability for each possible output class,
         # based on input values.  The input fields must be a dictionary
@@ -250,7 +274,7 @@ module BigML
         kind, threshold, positive_class = BigML::parse_operating_point(
             operating_point, ["probability"], @class_names)
             
-        predictions = self.predict_probability(input_data, false)
+        predictions = self._predict_probability(input_data, false)
         
         position = @class_names.index(positive_class)
         
@@ -283,8 +307,8 @@ module BigML
         kind = operating_kind.downcase
         
         if kind == "probability"
-            predictions = self.predict_probability(input_data,
-                                                   false)
+            predictions = self._predict_probability(input_data,
+                                                    false)
         else
           raise ArgumentError.new("Only probability is allowed as operating kind
                               for logistic regressions.")

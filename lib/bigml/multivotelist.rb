@@ -9,6 +9,7 @@ module BigML
     # The input should be an ordered list of probability, counts or confidences
     # for each of the classes in the objective field.
     # 
+    attr_accessor :predictions
     def initialize(predictions)
       # Init method, builds a MultiVoteList with a list of predictions
       # The constuctor expects a list of well formed predictions like:

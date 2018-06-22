@@ -8,6 +8,7 @@ require_relative "../lib/bigml/model"
 require_relative "../lib/bigml/multimodel"
 require_relative "../lib/bigml/ensemblepredictor"
 require_relative "../lib/bigml/supervised"
+require_relative "../lib/bigml/fusion"
 
 require "test/unit"
 
@@ -663,6 +664,200 @@ class Test33ComparePredictions < Test::Unit::TestCase
           end    
           
           assert_equal(local_confidence.to_f.round(3), confidence.round(3))
+          
+        end  
+     end
+     
+     # Scenario: Successfully comparing predictions for fusions:
+     def test_scenario10
+        data = [[File.dirname(__FILE__)+'/data/iris_unbalanced.csv', 
+                 {"tags" => ["my_fusion_tag"]}, 
+                 'my_fusion_tag', 
+                 {"petal width" => 4},
+                 '000004',
+                 'Iris-virginica'],
+                [File.dirname(__FILE__)+'/data/grades.csv', 
+                 {"tags" => ["my_fusion_tag_reg"]}, 
+                 'my_fusion_tag_reg', 
+                 {"Midterm" => 20},
+                 '000005',
+                 43.65286]
+               ]
+        
+        puts
+        puts "Scenario: Successfully comparing predictions for fusions:"
+                
+        data.each do |filename, params, tag, data_input, objective, prediction_result|
+          
+          extra_params = {'seed' =>  'BigML', 'ensemble_sample' => {"rate" => 0.7, "seed"=> 'BigML'}}
+          puts
+          puts "Given I create a data source uploading a <%s> file" % filename
+          source = @api.create_source(filename, {'name'=> 'source_test', 'project'=> @project["resource"]})
+
+          puts "And I wait until the source is ready"
+          assert_equal(BigML::HTTP_CREATED, source["code"])
+          assert_equal(1, source["object"]["status"]["code"])
+          assert_equal(@api.ok(source), true)
+         
+          puts "And I create a dataset"
+          dataset=@api.create_dataset(source)
+
+          puts "And I wait until the dataset is ready"
+          assert_equal(BigML::HTTP_CREATED, dataset["code"])
+          assert_equal(1, dataset["object"]["status"]["code"])
+          assert_equal(@api.ok(dataset), true)
+          
+          list_of_models = []
+ 
+          puts "And I create a model with <%s> " % JSON.generate(params)
+          model=@api.create_model(dataset, params)
+
+          puts "And I wait until the model is ready"
+          assert_equal(BigML::HTTP_CREATED, model["code"])
+          assert_equal(1, model["object"]["status"]["code"])
+          assert_equal(@api.ok(model), true)
+
+          list_of_models << model
+
+          puts "And I create a model with <%s> " % JSON.generate(params)
+          model=@api.create_model(dataset, params)
+
+          puts "And I wait until the model is ready"
+          assert_equal(BigML::HTTP_CREATED, model["code"])
+          assert_equal(1, model["object"]["status"]["code"])
+          assert_equal(@api.ok(model), true)
+
+          list_of_models << model 
+          
+          puts "And I create a fusion from a list of models"
+          fusion = @api.create_fusion(list_of_models)
+          
+          puts "And I wait until the fusion is ready"
+          assert_equal(BigML::HTTP_CREATED, fusion["code"])
+          assert_equal(1, fusion["object"]["status"]["code"])
+          assert_equal(@api.ok(fusion), true)
+          
+          puts "And I create a local fusion"
+          local_fusion = BigML::Fusion.new(fusion)
+          
+          puts "When I create a prediction for <%s>" % JSON.generate(data_input)
+          prediction = @api.create_prediction(fusion, data_input)
+          
+          puts "Then the prediction for <%s> is <%s>" % [objective, prediction_result]
+          assert_equal(prediction['object']['prediction'][objective], prediction_result)
+          
+          puts "And I create a local prediction for <%s>" % JSON.generate(data_input)
+          local_prediction = local_fusion.predict(data_input, {"full" => true})
+
+          puts "Then the local prediction is <%s>" % prediction_result
+          
+          if local_prediction.is_a?(Array)
+            local_prediction = local_prediction[0]
+          elsif local_prediction.is_a?(Hash)
+            local_prediction = local_prediction['prediction']
+          else
+            local_prediction = local_prediction
+          end    
+  
+          assert_equal(local_prediction, prediction_result)
+          
+        end  
+     end
+     
+     # Scenario:  Successfully comparing predictions in operating points for fusion:
+     def test_scenario11
+        data = [[File.dirname(__FILE__)+'/data/iris_unbalanced.csv', 
+                 {"tags" => ["my_fusion_tag_11"]}, 
+                 'my_fusion_tag_11', 
+                 {"petal width" => 4},
+                 '000004',
+                 'Iris-virginica',
+                 {"kind" => "probability", "threshold" => 0.1, "positive_class" => "Iris-setosa"}],
+                [File.dirname(__FILE__)+'/data/iris_unbalanced.csv', 
+                 {"tags" => ["my_fusion_tag_11_b"]}, 
+                 'my_fusion_tag_11_b', 
+                 {"petal width" => 4},
+                 '000004',
+                 'Iris-virginica',
+                 {"kind" => "probability", "threshold" => 0.9, "positive_class" => "Iris-setosa"}]
+               ]
+        
+        puts
+        puts " Successfully comparing predictions in operating points for fusion"
+                
+        data.each do |filename, params, tag, data_input, objective, prediction_result, operating_point|
+          
+          extra_params = {'seed' =>  'BigML', 'ensemble_sample' => {"rate" => 0.7, "seed"=> 'BigML'}}
+          puts
+          puts "Given I create a data source uploading a <%s> file" % filename
+          source = @api.create_source(filename, {'name'=> 'source_test', 'project'=> @project["resource"]})
+
+          puts "And I wait until the source is ready"
+          assert_equal(BigML::HTTP_CREATED, source["code"])
+          assert_equal(1, source["object"]["status"]["code"])
+          assert_equal(@api.ok(source), true)
+         
+          puts "And I create a dataset"
+          dataset=@api.create_dataset(source)
+
+          puts "And I wait until the dataset is ready"
+          assert_equal(BigML::HTTP_CREATED, dataset["code"])
+          assert_equal(1, dataset["object"]["status"]["code"])
+          assert_equal(@api.ok(dataset), true)
+          
+          list_of_models = []
+ 
+          puts "And I create a model with <%s> " % JSON.generate(params)
+          model=@api.create_model(dataset, params)
+
+          puts "And I wait until the model is ready"
+          assert_equal(BigML::HTTP_CREATED, model["code"])
+          assert_equal(1, model["object"]["status"]["code"])
+          assert_equal(@api.ok(model), true)
+
+          list_of_models << model
+
+          puts "And I create a model with <%s> " % JSON.generate(params)
+          model=@api.create_model(dataset, params)
+
+          puts "And I wait until the model is ready"
+          assert_equal(BigML::HTTP_CREATED, model["code"])
+          assert_equal(1, model["object"]["status"]["code"])
+          assert_equal(@api.ok(model), true)
+
+          list_of_models << model 
+          
+          puts "And I create a fusion from a list of models"
+          fusion = @api.create_fusion(list_of_models)
+          
+          puts "And I wait until the fusion is ready"
+          assert_equal(BigML::HTTP_CREATED, fusion["code"])
+          assert_equal(1, fusion["object"]["status"]["code"])
+          assert_equal(@api.ok(fusion), true)
+          
+          puts "And I create a local fusion"
+          local_fusion = BigML::Fusion.new(fusion)
+          
+          puts "When I create a prediction for <%s> in <%s>" % [JSON.generate(data_input), JSON.generate(operating_point)]
+          prediction = @api.create_prediction(fusion, data_input, {"operating_point" => operating_point})
+          
+          puts "Then the prediction for <%s> is <%s>" % [objective, prediction_result]
+          assert_equal(prediction['object']['prediction'][objective], prediction_result)
+          
+          puts "And I create a local prediction for <%s> in <%s>" % [JSON.generate(data_input), JSON.generate(operating_point)]
+          local_prediction = local_fusion.predict(data_input, {"operating_point" => operating_point})
+
+          puts "Then the local prediction is <%s>" % prediction_result
+          
+          if local_prediction.is_a?(Array)
+            local_prediction = local_prediction[0]
+          elsif local_prediction.is_a?(Hash)
+            local_prediction = local_prediction['prediction']
+          else
+            local_prediction = local_prediction
+          end    
+  
+          assert_equal(local_prediction, prediction_result)
           
         end  
      end

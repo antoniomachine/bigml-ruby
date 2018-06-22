@@ -2448,7 +2448,7 @@ module BigML
      # https://bigml.com/developers/configurations
      ##########################################################################
      
-     def create_configuration(configurations, args=nil, wait_time=3, retries=10)
+     def create_configuration(configurations, args=nil)
         #Creates a configuratoin from a `configurations` dictionary
 
         if !configurations.is_a?(Hash)

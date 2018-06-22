@@ -104,7 +104,6 @@ module BigML
                                        Check your model id values: %s' % ensemble
                 end
              end 
-             @distributions=nil
          else
             ensemble = get_ensemble_resource(ensemble)
             @resource_id = BigML::get_ensemble_id(ensemble)
@@ -217,22 +216,24 @@ module BigML
                                              Hash[*ensemble['object'].fetch('initial_offsets', []).flatten]
          end
 
-         if !@regression and @boosting.nil?
+         if !@regression
            begin
-             objective_field = self.fields[@objective_id]
+             objective_field = @fields[@objective_id]
              categories = objective_field['summary']['categories']
              classes = categories.collect {|category| category[0]}
-           rescue
+           rescue 
              classes = []
              @distributions.each do |d|
-               d['training']['categories'].each do |c|
-                 if !classes.include?(c[0])
-                   classes << c[0] 
-                 end 
-               end   
+                d['training']['categories'].each do |c|
+                  if !classes.include?(c[0])
+                    classes << c[0] 
+                  end 
+                end   
              end
-             @class_names = classes.sort
-           end   
+           end
+           
+           @class_names = classes.sort
+           @objective_categories = @fields[@objective_id]['summary']['categories'].map{|it|it[0]}
          end    
         
          super(@fields, @objective_id)
@@ -311,9 +312,15 @@ module BigML
         return @model_ids 
       end
 
-      def predict_probability(input_data,
-                              missing_strategy=LAST_PREDICTION, 
-                              compact=false)
+      def predict_probability(input_data, options={})
+        return _predict_probability(input_data, 
+                                    options.fetch("missing_strategy", LAST_PREDICTION),
+                                    options.fetch("compact", false))
+      end
+      
+      def _predict_probability(input_data,
+                               missing_strategy=LAST_PREDICTION, 
+                               compact=false)
 
        # For classification problems, Predicts a probabilistic "score" for
        # each possible output class, based on input values.  The input
@@ -334,10 +341,10 @@ module BigML
        #
        
        if @regression
-         output = [self.predict(input_data,
+         prediction = self.predict(input_data,
                                 {"method" => PROBABILITY_CODE,
                                  "missing_strategy" => missing_strategy, 
-                                 "full" => !compact})]
+                                 "full" => !compact})
          if compact
            output = [prediction]
          else
@@ -371,9 +378,15 @@ module BigML
                                         
       end
       
-      def predict_confidence(input_data,
-                             missing_strategy=LAST_PREDICTION,
-                             compact=false)
+      def predict_confidence(input_data, options={})
+        return _predict_confidence(input_data,
+                                   options.fetch("missing_strategy", BigML::LAST_PREDICTION),
+                                   options.fetch("compact",false))
+      end
+      
+      def _predict_confidence(input_data,
+                              missing_strategy=LAST_PREDICTION,
+                              compact=false)
 
         # For classification models, Predicts a confidence for
         # each possible output class, based on input values.  The input
@@ -392,7 +405,7 @@ module BigML
 
         if !@boosting.nil?
           # we use boosting probabilities as confidences also
-          return self.predict_probability(input_data, 
+          return self._predict_probability(input_data, 
                                           missing_strategy,
                                           compact)
         
@@ -423,9 +436,15 @@ module BigML
         return output   
       end
       
-      def predict_votes(input_data,
+      def predict_votes(input_data, options={})
+        return _predict_votes(input_data,
+                              options.fetch("missing_strategy", BigML::LAST_PREDICTION),
+                              options.fetch("compact",false))
+      end
+      
+      def _predict_votes(input_data,
                          missing_strategy=LAST_PREDICTION,
-                         compact=False)
+                         compact=false)
 
         # For classification models, Predicts the votes for
         # each possible output class, based on input values.  The input
@@ -544,7 +563,7 @@ module BigML
         kind, threshold, positive_class = BigML::parse_operating_point(operating_point, 
                                                 OPERATING_POINT_KINDS_ENSEMBLE, @class_names)
         begin
-          predictions = self.send("predict_%s" % kind, input_data, missing_strategy, false)
+          predictions = self.send("_predict_%s" % kind, input_data, missing_strategy, false)
           position = @class_names.index(positive_class)
         rescue
           raise ArgumentError.new("The operating point needs to contain a valid
@@ -592,8 +611,8 @@ module BigML
                              [OPERATING_POINT_KINDS_ENSEMBLE.join(", "), kind])
         end
         
-        predictions = self.send("predict_%s" % kind, input_data, missing_strategy, false)
-
+        predictions = self.send("_predict_%s" % kind, input_data, missing_strategy, false)
+        
         if @regression
           prediction = predictions
         else
@@ -723,10 +742,13 @@ module BigML
             # for regressions, operating_kind defaults to the old
             # combiners
             method = operating_kind == "confidence" ? 1 : 0
-            return predict(input_data, {"method" => method, "options" => options,
-                                        "missing_strategy" => missing_strategy, 
-                                        "operating_point" => nil, "operating_kind" => nil, 
-                                        "full" => full})
+            return self.predict(input_data, 
+                                {"method" => method, 
+                                 "options" => options,
+                                 "missing_strategy" => missing_strategy, 
+                                 "operating_point" => nil, 
+                                 "operating_kind" => nil, 
+                                 "full" => full})
                                         
           else
             prediction = self.predict_operating_kind(

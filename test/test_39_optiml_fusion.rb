@@ -70,8 +70,8 @@ class TestOptimlFusionConnection < Test::Unit::TestCase
   #  "Scenario 2: Successfully creating a fusion from a dataset"
   def test_scenario2
     data = [[File.dirname(__FILE__)+'/data/iris.csv', 
-             'my new fusion name', {"tags" => ["mytag"]}, 
-             "mytag", {"petal width" => 1.75, "petal length" => 2.45}, 
+             'my new fusion name', {"tags" => ["my_fusion_2_tag"]}, 
+             "my_fusion_2_tag", {"petal width" => 1.75, "petal length" => 2.45}, 
              "000004", "Iris-setosa", 'average_phi', 1.0]]
      
     puts
@@ -129,7 +129,7 @@ class TestOptimlFusionConnection < Test::Unit::TestCase
       puts "And I retrieve a list of remote models tagged with <%s>" % tag
       list_of_models = @api.list_models("tags__in=%s" % tag)['objects'].map {|model| @api.get_model(model["resource"])}
       
-      puts "And I create a fusion from a dataset"
+      puts "And I create a fusion from a list of models"
       fusion =  @api.create_fusion(list_of_models)
       
       puts "And I wait until the fusion is ready"
@@ -170,8 +170,8 @@ class TestOptimlFusionConnection < Test::Unit::TestCase
   #  "Scenario 3: Successfully creating a fusion from a dataset"
   def test_scenario3
     data = [[File.dirname(__FILE__)+'/data/iris.csv', 
-             'my new fusion name', {"tags" => ["mytag"]}, 
-             "mytag", File.dirname(__FILE__)+'/tmp/batch_predictions.csv', 
+             'my new fusion name', {"tags" => ["my_fusion_3_tag"]}, 
+             "my_fusion_3_tag", File.dirname(__FILE__)+'/tmp/batch_predictions.csv', 
              File.dirname(__FILE__)+'/data/batch_predictions_fs.csv']]
     puts
     puts "Scenario 3: Successfully creating a fusion from a dataset"

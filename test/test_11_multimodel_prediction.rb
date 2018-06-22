@@ -71,13 +71,13 @@ class TestMultimodelPrediction < Test::Unit::TestCase
 
        list_of_models << model
 
-       print "And I create a local multi model"
+       puts "And I create a local multi model"
        local_multimodel = BigML::MultiModel.new(list_of_models, @api)
 
-       print "When I create a local prediction for <%s>" % data_input
+       puts "When I create a local prediction for <%s>" % data_input
        prediction = local_multimodel.predict(data_input)
 
-       print "Then the prediction is <%s>" % prediction
+       puts "Then the prediction is <%s>" % prediction
        assert_equal(prediction, prediction_result)
 
     end

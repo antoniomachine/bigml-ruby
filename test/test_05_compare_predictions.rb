@@ -728,7 +728,9 @@ class TestComparePrediction < Test::Unit::TestCase
         assert_equal(local_prediction["confidence"].round(2), confidence.round(2))
         
         puts "And I create local probabilities for <%s>" % JSON.generate(data_input)
-        local_probabilities = local_model.predict_probability(data_input, BigML::LAST_PREDICTION, true)
+        
+        local_probabilities = local_model.predict_probability(data_input, {"missing_strategy" => BigML::LAST_PREDICTION, 
+                                                                           "compact" => true})
         puts "Then the local probabilities are <%s>" % JSON.generate(probabilities)
         assert_equal(local_probabilities, probabilities)
      end

@@ -2,6 +2,12 @@
 
 History
 -------
+0.0.7 (2018-06-25)
+~~~~~~~~~~~~~~~~~~
+- Adding local fusion object and predict methods.
+- Fixing error handling in local objects.
+- Fixing bug in local logistic regressions when using a local stored file.
+
 0.0.6 (2018-06-13)
 ~~~~~~~~~~~~~~~~~~
 - Adding batch predictions for fusion resources.

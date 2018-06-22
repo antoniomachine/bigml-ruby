@@ -26,7 +26,6 @@ require_relative 'boostedtree'
 
 module BigML
 
-   STORAGE = './storage'
    DEFAULT_IMPURITY = 0.2
    OPERATING_POINT_KINDS = ["probability", "confidence"]
    DICTIONARY = "hash"
@@ -190,6 +189,10 @@ module BigML
         @boosting = nil 
         @class_names = nil
         
+        if api.nil?
+          api = BigML::Api.new(nil, nil, false, false, false, STORAGE)
+        end
+        
         # the string can be a path to a JSON file
         if model.is_a?(String) 
            if File.file?(model)
@@ -228,9 +231,7 @@ module BigML
         end
 
         if !(model.is_a?(Hash) and model.key?('resource') and !model['resource'].nil?) 
-           if api.nil?
-              api = BigML::Api.new(nil, nil, false, false, false, STORAGE, nil)
-           end
+          
            if !fields.nil? and fields.is_a?(Hash)
              query_string = EXCLUDE_FIELDS
            else
@@ -436,7 +437,13 @@ module BigML
 
      end
      
-     def predict_probability(input_data, 
+     def predict_probability(input_data, options={})
+        return _predict_probability(input_data,
+                                    options.fetch("missing_strategy", BigML::LAST_PREDICTION),
+                                    options.fetch("compact",false))
+     end
+     
+     def _predict_probability(input_data, 
                              missing_strategy=LAST_PREDICTION, 
                              compact=false)
                              
@@ -456,23 +463,20 @@ module BigML
        #         
         
         if @regression or !@boosting.nil?
-          output = [self.predict(input_data, {"missing_strategy" => missing_strategy,
-                                              "full" => !compact})]
+          prediction = self.predict(input_data, {"missing_strategy" => missing_strategy,
+                                              "full" => !compact})
           if compact
             output = [prediction]
           else
             output = prediction
           end    
         else
-      
           prediction = self.predict(input_data,
                                     {"missing_strategy" => missing_strategy, 
                                      "full" => true})
-                                     
+                        
           category_map = self._probabilities(prediction['distribution'])
-   
           output = self._to_output(category_map, compact, "probability")
-            
         end
         
         return output    
@@ -487,8 +491,8 @@ module BigML
                                                                         OPERATING_POINT_KINDS, 
                                                                         self.class_names)
          if kind == "probability"
-           predictions = self.predict_probability(input_data,
-                                                  missing_strategy, false)
+           predictions = self._predict_probability(input_data,
+                                                   missing_strategy, false)
          else
            predictions = self.predict_confidence(input_data,
                                                  missing_strategy, false)
@@ -536,7 +540,7 @@ module BigML
                             [", ".join(OPERATING_POINT_KINDS), kind])
        end
        if kind == "probability"
-         predictions = self.predict_probability(input_data,
+         predictions = self._predict_probability(input_data,
                                                  missing_strategy, false)
        else
          predictions = self.predict_confidence(input_data,

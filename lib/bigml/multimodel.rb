@@ -200,8 +200,9 @@ module BigML
             if method == CONFIDENCE_CODE
               prediction_info = model.predict_confidence(input_data, missing_strategy, true)
             else
-              prediction_info = model.predict_probability(input_data, missing_strategy, true)
-            end    
+              prediction_info = model.predict_probability(input_data, {"missing_strategy" => missing_strategy, "compact" => true})
+            end
+
           end  
           
           votes << prediction_info
