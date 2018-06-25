@@ -79,19 +79,7 @@ module BigML
        @term_to_index = nil
        @topics = []
 
-       if !(topic_model.is_a?(Hash) and topic_model.key?('resource') and !topic_model["resource"].nil?)
-          if api.nil?
-             api = BigML::Api.new(nil, nil, false, false, false, STORAGE)
-          end
-          @resource_id = BigML::get_topic_model_id(topic_model)
-          if @resource_id.nil?
-             raise Exception, api.error_message(topic_model, 'topicmodel', 'get')
-          end
-          query_string = ONLY_MODEL
-          topic_model = BigML::retrieve_resource(api, @resource_id, query_string)
-       else
-          @resource_id = BigML::get_topic_model_id(topic_model)
-       end
+       @resource_id, topic_model = BigML::get_resource_dict(topic_model, "topicmodel", api)
 
        if topic_model.key?('object') and topic_model['object'].is_a?(Hash)
           topic_model = topic_model['object']

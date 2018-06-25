@@ -189,60 +189,7 @@ module BigML
         @boosting = nil 
         @class_names = nil
         
-        if api.nil?
-          api = BigML::Api.new(nil, nil, false, false, false, STORAGE)
-        end
-        
-        # the string can be a path to a JSON file
-        if model.is_a?(String) 
-           if File.file?(model)
-              begin
-                File.open(model, "r") do |f|
-                    model = JSON.parse(f.read)
-                end
-                @resource_id =  BigML::get_model_id(model)
-                if @resource_id.nil?
-                   raise ArgumentError.new("The JSON file does not seem to contain a valid BigML model representation")
-                end
-              rescue Exception
-                  raise Exception, "The JSON file does not seem to contain a valid BigML model representation"
-              end
-           else
-              # if it is not a path, it can be a model id
-             @resource_id =  BigML::get_model_id(model)
-             if @resource_id.nil?
-               if !model.index('model/').nil?
-                   raise Exception, api.error_message(model, 'model', 'get')
-               else
-                   raise Exception, "Failed to open the expected JSON file at %s" % [model]
-               end
-             end
-           end 
-        end
-
-        # checks whether the information needed for local predictions is in
-        # the first argument
-        has_model_fields = BigML::check_model_fields(model)
-        if model.is_a?(Hash) and fields.nil? and !has_model_fields
-           # if the fields used by the model are not available, use only ID
-           # to retrieve it again
-           model = BigML::get_model_id(model)
-           @resource_id = model
-        end
-
-        if !(model.is_a?(Hash) and model.key?('resource') and !model['resource'].nil?) 
-          
-           if !fields.nil? and fields.is_a?(Hash)
-             query_string = EXCLUDE_FIELDS
-           else
-             query_string = ONLY_MODEL
-           end
-
-           model = BigML::retrieve_resource(api, @resource_id, query_string, !fields.nil?)
-        else
-           @resource_id =  BigML::get_model_id(model)
-        end
-
+        @resource_id, model = BigML::get_resource_dict(model, "model", api)
         super(model, api, fields)
 
         if model.key?('object') and model['object'].is_a?(Hash)

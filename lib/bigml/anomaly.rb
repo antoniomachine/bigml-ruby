@@ -44,9 +44,9 @@ module BigML
 
   class Anomaly < ModelFields
       #
-      # A lightweight wrapper around an anomaly detector.
+      # A lightweight wrapper around an anomaly detector.
       # Uses a BigML remote anomaly detector model to build a local version that
-      # can be used to generate anomaly scores locally.
+      # can be used to generate anomaly scores locally.
       #
       def initialize(anomaly, api=nil)
         
@@ -59,34 +59,7 @@ module BigML
          @top_anomalies = nil 
          @id_fields = []
 
-         # checks whether the information needed for local predictions is in
-	 # the first argument
-
-         if (anomaly.is_a?(Hash) and !BigML::check_model_fields(anomaly))
-            anomaly = BigML::get_anomaly_id(anomaly)
-            @resource_id = anomaly
-         end
-	 
-         if !(anomaly.is_a?(Hash) and anomaly.include?('resource') and 
-              !anomaly['resource'].nil?)
- 
-            if api.nil?
-                api = BigML::Api.new(nil, nil, false, false, false, STORAGE)
-            end
-
-            @resource_id = BigML::get_anomaly_id(anomaly)
-            if @resource_id.nil?
-                raise Exception, api.error_message(anomaly,
-                                                  'anomaly',
-                                                  'get')
-            end
-
-            query_string = BigML::ONLY_MODEL
-            anomaly = BigML::retrieve_resource(api, @resource_id,
-                                               query_string)
-         else
-            @resource_id = BigML::get_anomaly_id(anomaly)
-         end
+         @resource_id, anomaly = BigML::get_resource_dict(anomaly, "anomaly", api)
          
          if anomaly.include?('object') and anomaly['object'].is_a?(Hash)
             anomaly = anomaly['object']

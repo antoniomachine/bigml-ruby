@@ -111,43 +111,22 @@ module BigML
       @field_parameters = {}
       @_forecast = {}
       
-      # checks whether the information needed for local predictions is in
-      # the first argument
-      if time_series.is_a?(Hash) and !BigML::check_model_fields(time_series)
-        # if the fields used by the logistic regression are not
-        # available, use only ID to retrieve it again
-        time_series = BigML::get_time_series_id(time_series)
-        @resource_id = time_series
-      end
-      
-      if !(time_series.is_a?(Hash) and time_series.key?("resource") and !time_series["resource"].nil?)
-        if api.nil?
-          api = BigML::Api.new(nil, nil, false, false, false, STORAGE)
-        end  
-        @resource_id = BigML::get_time_series_id(time_series)
-        if @resource_id.nil?
-          raise Exception, api.error_message(time_series, 'time_series', 'get')
-        end 
-        query_string = BigML::ONLY_MODEL
-        time_series = BigML::retrieve_resource(api, @resource_id, query_string)
-      else
-        @resource_id = BigML::get_time_series_id(time_series)
-      end 
+      @resource_id, time_series = BigML::get_resource_dict(time_series, "timeseries", api)
       
       if time_series.key?('object') and time_series['object'].is_a?(Hash)
-         time_series = time_series['object']
+        time_series = time_series['object']
       end
       
       begin
-        @input_fields = time_series.fetch("input_fields", [])
-        @_forecast = time_series.fetch("forecast", nil)
-        @objective_fields = time_series.fetch("objective_fields", [])
-        objective_field = time_series.key?('objective_field') ? 
-                   time_series['objective_field'] : time_series['objective_fields']
+         @input_fields = time_series.fetch("input_fields", [])
+         @_forecast = time_series.fetch("forecast", nil)
+         @objective_fields = time_series.fetch("objective_fields", [])
+         objective_field = time_series.key?('objective_field') ? 
+         time_series['objective_field'] : time_series['objective_fields']
       rescue
         raise ArgumentError.new("Failed to find the time series expected JSON structure. Check your arguments.")
-      end  
-       
+      end
+      
       if time_series.key?('time_series') and time_series['time_series'].is_a?(Hash)
         status = BigML::Util::get_status(time_series) 
         if status.key?('code') and status['code'] == FINISHED

@@ -73,46 +73,7 @@ module BigML
       @optimizer = nil
       @missing_numerics = false
       
-      if api.nil?
-        api = BigML::Api.new(nil, nil, false, false, false, STORAGE)
-      end  
-    
-      if deepnet.is_a?(String)
-        if File.file?(deepnet)
-          File.open(deepnet, "r") do |f|
-              deepnet = JSON.parse(f.read)
-          end
-          @resource_id =  BigML::get_deepnet_id(deepnet)
-          if @resource_id.nil?
-             raise ArgumentError, "The JSON file does not seem to contain a valid BigML deepnet representation"
-          end
-        else 
-          @resource_id =  BigML::get_deepnet_id(deepnet)
-          if @resource_id.nil?
-            if !model.index('deepnet/').nil?
-                raise Exception, api.error_message(deepnet, 'deepnet', 'get')
-            else
-                raise Exception, "Failed to open the expected JSON file at %s" % [deepnet]
-            end
-          end 
-        end 
-      end
-    
-      # checks whether the information needed for local predictions is in
-      # the first argument
-      if deepnet.is_a?(Hash) and !BigML::check_model_fields(deepnet)
-         # if the fields used by the deepenet are not
-         # available, use only ID to retrieve it again
-         deepnet = BigML::get_deepnet_id(deepnet)
-         @resource_id = deepnet
-      end
-      
-      if !(deepnet.is_a?(Hash) and deepnet.key?('resource') and !deepnet['resource'].nil?) 
-         query_string = ONLY_MODEL
-         deepnet = BigML::retrieve_resource(api, @resource_id, query_string)
-      else
-         @resource_id =  BigML::get_deepnet_id(deepnet)
-      end
+      @resource_id, deepnet = BigML::get_resource_dict(deepnet, "deepnet", api)
     
       if deepnet.key?('object') and deepnet['object'].is_a?(Hash)
          deepnet = deepnet['object']

@@ -24,6 +24,20 @@ module BigML
   DEFAULT_LOCALE = 'UTF-8'
 
   ITEM_SINGULAR = {"categories" => "category"}
+  
+  FIELDS_PARENT = {
+      "model" => "model",
+      "anomaly" => "model",
+      "cluster" => "clusters",
+      "logisticregression" => "logistic_regression",
+      "ensemble" => "ensemble",
+      "deepnet" => "deepnet",
+      "topicmodel" => "topic_model",
+      "association" => "associations",
+      "fusion" => "fusion",
+      "correlation" => "correlations",
+      "sample" => "sample",
+      "statisticaltest" => "statisticaltests"}
 
   RESOURCES_WITH_FIELDS = [SOURCE_PATH, DATASET_PATH, MODEL_PATH,
                            PREDICTION_PATH, CLUSTER_PATH, ANOMALY_PATH,
@@ -69,30 +83,19 @@ module BigML
       end
 
       # fields structure
-      if [MODEL_PATH, ANOMALY_PATH].include?(resource_type)
-         fields = resource['model']['fields']
-      elsif resource_type == CLUSTER_PATH
-          fields = resource['clusters']['fields']
-      elsif resource_type == CORRELATION_PATH
-          fields = resource['correlations']['fields']
-      elsif resource_type == STATISTICAL_TEST_PATH
-          fields = resource['statistical_tests']['fields']
-      elsif resource_type == LOGISTIC_REGRESSION_PATH
-          fields = resource['logistic_regression']['fields']
-      elsif resource_type == ASSOCIATION_PATH
-          fields = resource['associations']['fields']
-      elsif resource_type == TOPIC_MODEL_PATH
-          fields = resource['topic_model']['fields']
-      elsif resource_type == ENSEMBLE_PATH
-          fields = resource['ensemble']['fields']
-      elsif resource_type == SAMPLE_PATH
-          fields = {}
-          resource['sample']['fields'].each do |field| 
-             fields[field['id']] = field
-          end
+      if FIELDS_PARENT.keys.include?(resource_type)
+        fields = resource[FIELDS_PARENT[resource_type]].fetch('fields', {})
       else
-          fields = resource['fields']
+        fields = resource.fetch('fields', {})
       end
+      
+      if resource_type == SAMPLE_PATH
+        fields = {}
+        fields.each do |field| 
+           fields[field['id']] = field
+        end
+      end
+          
       # Check whether there's an objective id
       objective_column = nil
       if resource_type == DATASET_PATH

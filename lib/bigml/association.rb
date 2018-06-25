@@ -92,26 +92,8 @@ module BigML
         @search_strategy = DEFAULT_SEARCH_STRATEGY
         @rules = []
         @significance_level = nil
-
-        if !(association.is_a?(Hash) and 
-            association.key?('resource') and 
-             !association['resource'].nil?)
-
-            if api.nil?
-                api = BigML::Api.new(nil, nil, false, false, false, STORAGE)
-            end
-
-            @resource_id = BigML::get_association_id(association)
-            if @resource_id.nil?
-                raise Exception, api.error_message(association,
-                                                 'association',
-                                                  'get')
-            end
-            query_string = ONLY_MODEL
-            association = BigML::retrieve_resource(api, @resource_id, query_string)
-        else
-            @resource_id = BigML::get_association_id(association)
-        end
+     
+        @resource_id, association = BigML::get_resource_dict(association, "association", api)
 
         if association.include?('object') and 
              association['object'].is_a?(Hash)

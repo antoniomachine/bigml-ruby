@@ -5378,7 +5378,7 @@ example of it would be:
 
     operating_point = {"kind" => "probability",
                        "positive_class" => "true",
-                       "threshold" => 0.8};
+                       "threshold" => 0.8}
     prediction = local_fusion.predict(inputData,
                                       {"operating_point" => operating_point})
 

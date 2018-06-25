@@ -57,7 +57,6 @@ module BigML
 
       # Uses a BigML remote logistic regression model to build a local version
       # that can be used to generate predictions locally.
-
       def initialize(logistic_regression, api=nil)
          @resource_id = nil
          @class_names = nil
@@ -81,55 +80,7 @@ module BigML
          @regularization = nil
          old_coefficients = false
          
-         if api.nil?
-           api = BigML::Api.new(nil, nil, false, false, false, STORAGE)
-         end
-         # the string can be a path to a JSON file
-         if logistic_regression.is_a?(String)
-           begin
-             if File.file?(logistic_regression)
-               File.open(logistic_regression, "r") do |logistic_regression_file|
-                 logistic_regression = JSON.parse(logistic_regression_file.read)
-                 @resource_id =  BigML::get_logisticregression_id(logistic_regression)
-                 if @resource_id.nil?
-                    raise ArgumentError, "The JSON file does not seem to contain a valid 
-                                          BigML logistic regression representation"
-                 end
-               end
-             else
-               @resource_id =  BigML::get_logisticregression_id(logistic_regression)
-               if @resource_id.nil?
-                 if !model.index('logisticregression/').nil?
-                     raise Exception, api.error_message(logistic_regression, 'logistic_regression', 'get')
-                 else
-                     raise Exception, "Failed to open the expected JSON file at %s" % [logistic_regression]
-                 end
-               end 
-             end 
-           end
-         end
-
-         # checks whether the information needed for local predictions is in
-         # the first argument
-         if logistic_regression.is_a?(Hash)  and !BigML::check_model_fields(logistic_regression)
-           # if the fields used by the logistic regression are not
-           # available, use only ID to retrieve it again
-           logistic_regression = BigML::get_logistic_regression_id(logistic_regression)
-           @resource_id = logistic_regression
-         end
-
-         if !(logistic_regression.is_a?(Hash) and 
-             logistic_regression.include?('resource') and
-              !logistic_regression['resource'].nil?)
-              
-            @resource_id = BigML::get_logisticregression_id(logistic_regression)
-            query_string = BigML::ONLY_MODEL
-            logistic_regression = BigML::retrieve_resource(
-                api, @resource_id, query_string)
-            
-         else
-            @resource_id = BigML::get_logisticregression_id(logistic_regression)
-         end
+         @resource_id, logistic_regression = BigML::get_resource_dict(logistic_regression, "logisticregression", api)
 
          if logistic_regression.include?('object') and 
              logistic_regression['object'].is_a?(Hash) 

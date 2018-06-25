@@ -19,12 +19,66 @@ require_relative 'predicate'
 module BigML
   
   ONLY_MODEL = 'only_model=true;limit=-1;'
-  
-  FIELDS_PARENT = {"cluster" => "clusters",
-                   "logisticregression" => "logistic_regression",
-                   "ensemble" => "ensemble",
-                   "deepnet" => "deepnet"}
 
+  def self.get_resource_dict(resource, resource_type, api=nil)
+    # Extracting the resource JSON info as a dict from the first argument of
+    #       the local object constructors, that can be:
+    #
+    #        - the path to a file that contains the JSON
+    #        - the ID of the resource
+    #        - the resource dict itself
+    #
+    #
+    if api.nil?
+      api = BigML::Api.new(nil, nil, false, false, false, STORAGE)
+    end
+    
+    get_id = BigML::ID_GETTERS[resource_type]
+    resource_id = nil
+    
+    if resource.is_a?(String)
+      if File.file?(resource)
+        begin
+          File.open(resource, "r") do |f|
+              resource = JSON.parse(f.read)
+          end
+          
+          resource_id =  self.send(get_id, resource)
+          if resource_id.nil?
+             raise ArgumentError.new("The JSON file does not seem to contain 
+                                      a valid BigML model representation" % resource_type)
+          end
+        rescue Exception
+            raise Exception, "The JSON file does not seem to contain a valid BigML model representation"
+        end
+      else
+        resource_id =  self.send(get_id, resource)
+        if resource_id.nil?
+          if !model.index('%s/' % resource_type).nil?
+              raise Exception, api.error_message(model, resource_type, 'get')
+          else
+              raise Exception, "Failed to open the expected JSON file at %s" % [resource]
+          end
+        end
+      end  
+    end  
+    # checks whether the information needed for local predictions is in
+    # the first argument 
+    if resource.is_a?(Hash) && !BigML::check_model_fields(resource)
+      resource = self.send(get_id, resource)
+      resource_id = resource
+    end
+    if !(resource.is_a?(Hash) && resource.key?("resource") && !resource['resource'].nil?)
+      query_string = BigML::ONLY_MODEL
+      resource = BigML::retrieve_resource(api, resource_id,
+                                          query_string)
+    else
+      resource_id = self.send(get_id, resource)
+    end
+    
+    return resource_id, resource
+  end  
+  
   def self.retrieve_resource(api, resource_id, query_string='', no_check_fields=false)
      # Retrieves resource info either from a local repo or
      # from the remote server 
@@ -136,8 +190,8 @@ module BigML
     # Checks the model structure to see if it contains all main expected keys 
 
     return (model.is_a?(Hash) and model.key?('resource') and 
-            !model["resource"].nil? and (model.key?("object") and 
-             (model["object"].key?(inner_key) or model.key?(inner_key))))
+            !model["resource"].nil? and ((model.key?("object") and 
+             model["object"].key?(inner_key) or model.key?(inner_key))))
   end
 
   def self.lacks_info(model, inner_key="model") 
@@ -185,6 +239,8 @@ module BigML
   class ModelFields 
      # A lightweight wrapper of the field information in the model, cluster
      # or anomaly objects
+     attr_accessor :resource_id
+     
      def initialize(fields, objective_id=nil, data_locale=nil,
                     missing_tokens=nil, terms=false, 
                     categories=false, numerics=false)

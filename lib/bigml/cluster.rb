@@ -95,9 +95,9 @@ module BigML
 
    class Cluster < ModelFields
       # A lightweight wrapper around a cluster model.
-      # Uses a BigML remote cluster model to build a local version that can be used
-      # to generate centroid predictions locally. 
-   
+      # Uses a BigML remote cluster model to build a local version that can be used
+      # to generate centroid predictions locally.
+      
       def initialize(cluster, api=nil)
         @resource_id = nil 
         @centroids = nil
@@ -118,32 +118,13 @@ module BigML
         @items = {}
         @datasets = {}
         @api = api
-       
-        if cluster.is_a?(Hash) and !BigML::check_model_fields(cluster)
-           # if the fields used by the cluster are not
-           # available, use only ID to retrieve it again
-           cluster = BigML::get_cluster_id(cluster)
-           @resource_id = cluster
-        end 
- 
-        if !(cluster.is_a?(Hash) and cluster.include?("resource") and
-           !cluster["resource"].nil?)
-            if api.nil?
-               api = BigML::Api.new(nil, nil, false, false, false, STORAGE)
-               @api = api
-            end
-
-            @resource_id = BigML::get_cluster_id(cluster)
-
-            if @resource_id.nil?
-                raise Exception api.error_message(cluster, 'cluster', 'get')
-            end
-            query_string = BigML::ONLY_MODEL
-            cluster = BigML::retrieve_resource(api, @resource_id, query_string)
-        else
-            @resource_id = BigML::get_cluster_id(cluster)
+        
+        if @api.nil?
+          @api = BigML::Api.new(nil, nil, false, false, false, STORAGE)
         end
-
+        
+        @resource_id, cluster = BigML::get_resource_dict(cluster, "cluster", @api)
+        
         if cluster.include?('object') and cluster['object'].is_a?(Hash)
             cluster = cluster['object']
         end
@@ -426,10 +407,6 @@ module BigML
         # Returns the list of data points that fall in one cluster.
         cluster_datasets = @datasets
         centroid_dataset = cluster_datasets.fetch(centroid_id, nil)
-        
-        if @api.nil?
-          @api = BigML::Api.new(nil, nil, false, false, false, STORAGE)
-        end  
         
         if centroid_dataset.nil? or centroid_dataset.empty?
           centroid_dataset = @api.create_dataset(@resource_id, {"centroid" => centroid_id})
