@@ -45,7 +45,7 @@ require_relative 'centroid'
 require_relative 'model'
 
 module BigML
-   OPTIONAL_FIELDS = ['categorical', 'text', 'items', 'datetime']
+
    CSV_STATISTICS =  ['minimum', 'mean', 'median', 'maximum', 'standard_deviation',
                       'sum', 'sum_squares', 'variance']
                             
@@ -234,7 +234,7 @@ module BigML
          # ``average`` parameter 
          @fields.each do |field_id, field|
            if !@summary_fields.include?(field_id) and 
-              !OPTIONAL_FIELDS.include?(field['optype']) and
+              field['optype'] == BigML::Util::NUMERIC and
               !input_data.key?(field_id)
               unless NUMERIC_DEFAULTS.include?(average)
                   raise Exception, "The available defaults are %s" % NUMERIC_DEFAULTS.join(", ") 

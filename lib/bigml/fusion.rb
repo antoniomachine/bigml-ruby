@@ -32,6 +32,7 @@
 #
 require_relative 'resourcehandler'
 require_relative 'multimodel'
+require_relative 'supervised'
 
 module BigML
   
@@ -54,6 +55,37 @@ module BigML
   
     return new_prediction
   end
+  
+  def self.get_models_weight(models_info)
+    # arses the information about model ids and weights in the `models`
+    #    key of the fusion dictionary. The contents of this key can be either
+    # list of the model IDs or a list of dictionaries with one entry per
+    # model
+    model_ids = []
+    weights = []
+    begin
+      model_info = models_info[0]
+      if model_info.is_a?(Hash)
+        begin
+          model_ids = models_info.map {|model| model["id"] }
+        rescue KeyError => e
+          raise ArgumentError, "The fusion information does not contain the model ids."
+        end  
+        
+        begin
+           weights = models_info.map{|model| model["weight"]}
+        rescue KeyError => e
+          weights = nil
+        end  
+      else
+        model_ids = models_info
+        weights = nil
+      end  
+      return model_ids, weights
+    rescue KeyError => e
+      raise ArgumentError, "Failed to find the models in the fusion info."
+    end  
+  end  
   
   class Fusion < ModelFields
     # A local predictive Fusion.
@@ -90,39 +122,37 @@ module BigML
       @regression = false
       @fields = nil
       @class_names= nil
-      @importance = {}
       
-      fusion = get_fusion_resource(fusion)
-      @resource_id = BigML::get_fusion_id(fusion)
-      
+      @resource_id, fusion = BigML::get_resource_dict(fusion, "fusion", @api)
       if fusion.key?("object")
         fusion = fusion.fetch("object", {})
       end
       
-      models = fusion['models']
-      model_types = models.collect{|model| BigML::get_resource_type(model)}
+      @model_ids, @weights = BigML::get_models_weight(fusion['models'])
+      model_types = @model_ids.collect{|model| BigML::get_resource_type(model)}
       
       model_types.each do |model_type|
         if !LOCAL_SUPERVISED.include?(model_type)
           raise ArgumentError, 'The resource %s has not an allowed
                                 supervised model type.' % model_type
         end
-      end  
+      end
       
       @importance = fusion.fetch("importance", [])
-      @model_ids = models
+      @missing_numerics = fusion.fetch("missing_numerics", true)
       
       if fusion.key?("fusion")
         @fields = fusion.fetch("fusion", {}).fetch("fields")
         @objective_id = fusion.fetch("objective_field") 
       end  
       
-      number_of_models = models.size
+      number_of_models = @model_ids.size
       if max_models.nil?
-        @models_splits = [models]
+        @models_splits = [@model_ids]
       else
-        @models_splits = (0..(number_of_models-1)).step(max_models).map{|it| models[it..(it+max_models-1)]}
+        @models_splits = (0..(number_of_models-1)).step(max_models).map{|index| @model_ids[index..(index+max_models-1)]}
       end
+                                
       
       if !@fields.nil?
         summary = @fields[@objective_id]['summary']
@@ -211,6 +241,10 @@ module BigML
       #
       
       votes = MultiVoteList.new([])
+      if !@missing_numerics
+         BigML::Util::check_no_missing_numerics(input_data, @fields)
+      end
+
       @models_splits.each do |models_split|
         models = []
         models_split.each do |model|
@@ -224,15 +258,25 @@ module BigML
         votes_split=[]
         
         models.each do |model|
+          begin
           prediction = model.predict_probability(
                               input_data,
                               {"missing_strategy" => missing_strategy, "compact" => true})
-          
+          rescue
+            next
+          end
           if @regression
             prediction = prediction[0]
+            if !@weights.nil?
+              prediction = self.weigh(prediction, model.resource_id)
+            end  
           else
             # we need to check that all classes in the fusion
             # are also in the composing model
+            if !@weights.nil?
+              prediction = self.weigh(prediction, model.resource_id)
+            end 
+            
             if !@regression and @class_names != model.class_names
               begin
                 prediction = BigML::rearrange_prediction(model.class_names,
@@ -252,14 +296,19 @@ module BigML
       end
       
       if @regression
+        total_weight =  @weights.nil? ? 1 : @weights.sum
+        
         prediction = ((votes.predictions.map{|prediction| prediction}.sum) / votes.predictions.size.to_f)
+        
+        prediction = (votes.predictions.map{|prediction| prediction}.sum) / votes.predictions.size.to_f*total_weight
+
         if compact
           output = [prediction]
         else
           output = {"prediction" => prediction}
         end    
       else
-        output = votes.combine_to_distribution(false)
+        output = votes.combine_to_distribution(true)
         if !compact
           output = @class_names.zip(output).map{|class_name, probability| {'category' => class_name,
                                                                            'probability' => probability} }
@@ -269,6 +318,22 @@ module BigML
       return output
     end
     
+    def weigh(prediction, model_id)
+      # Weighs the prediction according to the weight associated to the
+      # current model in the fusion.
+      #
+      if prediction.is_a?(Array)
+        prediction.each_with_index do |probability, index|
+          probability*= @weights[@model_ids.index(model_id)]
+          prediction[index] = probability
+        end   
+      else
+        prediction = @weights[@model_ids.index(model_id)]
+      end 
+      
+      return prediction
+    end
+          
     def predict(input_data, options={})
       # Makes a prediction based on a number of field values.
       # input_data: Input data to be predicted
@@ -305,6 +370,10 @@ module BigML
       else
         input_data = new_data
       end 
+      
+      if !@missing_numerics
+         BigML::Util::check_no_missing_numerics(input_data, @fields)
+      end
       
       # Strips affixes for numeric values and casts to the final field type
       BigML::Util::cast(input_data, @fields)

@@ -34,7 +34,7 @@ module BigML
      # field scales
      #
      input_data.each do |field, value|
-       if fields[field]['optype'] == 'numeric'
+       if fields[field]['optype'] == BigML::Util::NUMERIC
           mean = fields[field]['summary'].fetch('mean', 0)
           stddev = fields[field]['summary'].fetch('standard_deviation',0)
           
@@ -55,8 +55,9 @@ module BigML
    class Logistic < ModelFields
       # A lightweight wrapper around a logistic regression model.
 
-      # Uses a BigML remote logistic regression model to build a local version
-      # that can be used to generate predictions locally.
+      attr_accessor :class_names
+      # Uses a BigML remote logistic regression model to build a local version
+      # that can be used to generate predictions locally.
       def initialize(logistic_regression, api=nil)
          @resource_id = nil
          @class_names = nil
@@ -162,7 +163,7 @@ module BigML
               end    
               
               # order matters
-              @objective_categories =  categories.collect {|category| category[0]}
+              @objective_categories = categories.collect {|category| category[0]}
               @class_names += categories.collect {|category| category[0]}.sort
               
 
@@ -339,17 +340,9 @@ module BigML
          # In case that missing_numerics is False, checks that all numeric
          # fields are present in input data.
          if @missing_numerics == false
-            @fields.each do |field_id, field|
-               if !OPTIONAL_FIELDS.include?(field['optype']) and 
-                  !input_data.include?(field_id)
-                  raise Exception, "Failed to predict. Input 
-                                  data must contain values for all numeric
-                                  fields to get a logistic regression prediction."
-               end      
-            end 
-
+           BigML::Util::check_no_missing_numerics(input_data, @fields)
          end
-
+         
          if !@balance_fields.nil? and @balance_fields
            BigML::balance_input(input_data, @fields)
          end

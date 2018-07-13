@@ -428,6 +428,11 @@ module BigML
      def _set_create_from_models_args(models, types, args=nil,
                                       wait_time=3, retries=10, key=nil)
         # Builds args dictionary for the create call from a list of models
+        # The first argument needs to be a list of:
+        # - the model IDs
+        # - dict objects with the "id" attribute set to the ID of the model
+        #   and the "weight" attribute set to the weight associated to that model
+        #
         model_ids = []
         unless models.is_a?(Array)
           origin_models=[models]
@@ -436,10 +441,18 @@ module BigML
         end
 
         origin_models.each do |model|
+           if model.is_a?(Hash) and model.key?("id")
+             model = model["id"]
+           end
+           
            BigML::check_resource_type(model, types, "A list of model ids is needed to create the resource.")
            model_ids << BigML::get_resource_id(model).gsub("shared/", "")
            model = BigML::check_resource(model, nil, BigML::TINY_RESOURCE, wait_time, retries, true, self)
         end 
+        
+        if !origin_models[0].is_a?(Hash) or !origin_models[0].key?("id")
+          origin_models = model_ids
+        end
 
         create_args = {}
 
@@ -447,7 +460,7 @@ module BigML
            create_args = args.clone
         end 
       
-        create_args["models"]=model_ids
+        create_args["models"]=origin_models
 
         return create_args 
  

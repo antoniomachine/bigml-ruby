@@ -66,12 +66,13 @@ module BigML
     # A lightweight wrapper around any supervised model.
     # Uses any BigML remote supervised model to build a local version
     # that can be used to generate predictions locally.
+
     def initialize(model, api=nil)
       if api.nil?
         api = BigML::Api.new(nil, nil, false, false, false, STORAGE)
       end
-      resource_id, model = BigML::extract_id(model, api)
-      resource_type = BigML::get_resource_type(resource_id)
+      @resource_id, model = BigML::extract_id(model, api)
+      resource_type = BigML::get_resource_type(@resource_id)
       @local_model = BigML::COMPONENT_CLASSES[resource_type].new(model, api)
       
       @local_model.attributes.each do|attribute_name|

@@ -2,6 +2,10 @@
 
 History
 -------
+0.0.9 (2018-06-30)
+ - Modifying local fusion object to adapt to logistic regressions with
+   no missing numerics allowed.
+
 0.0.8 (2018-06-28)
 ~~~~~~~~~~~~~~~~~~
 - Refactoring the local classes that manage models information to create  

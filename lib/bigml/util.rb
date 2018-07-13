@@ -17,6 +17,8 @@ module BigML
    
    DFT_STORAGE_FILE = File.join(DFT_STORAGE, "BigML_%s.json")
    
+   NUMERIC = "numeric"
+   
    class << self
 
      def is_url(urlString)
@@ -308,6 +310,18 @@ module BigML
        end
        
        return path
+     end 
+     
+     
+     def check_no_missing_numerics(input_data,fields)
+       # Checks whether some numeric fields are missing in the input data
+       fields.each do |field_id, field|
+         if field['optype'] == BigML::Util::NUMERIC and !input_data.key?(field_id)
+           raise ArgumentError, "Failed to predict. Input  data must contain 
+                                 values for all numeric fields to get a 
+                                 logistic regression prediction."
+         end 
+       end
      end 
      
      # markdown_cleanup

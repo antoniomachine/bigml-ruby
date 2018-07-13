@@ -37,7 +37,7 @@ module BigML
       "fusion" => "fusion",
       "correlation" => "correlations",
       "sample" => "sample",
-      "statisticaltest" => "statisticaltests"}
+      "statisticaltest" => "statistical_tests"}
 
   RESOURCES_WITH_FIELDS = [SOURCE_PATH, DATASET_PATH, MODEL_PATH,
                            PREDICTION_PATH, CLUSTER_PATH, ANOMALY_PATH,

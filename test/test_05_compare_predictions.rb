@@ -93,7 +93,7 @@ class TestComparePrediction < Test::Unit::TestCase
              "options" => {"fields" => {"000001" => {"optype" => "text", "term_analysis" => {"case_sensitive"=> true, "stem_words" => true, "use_stopwords" => false, "language" => "en"}}}},
              "data_input" => {"Message" => "Mobile call"}, 
              "objective" => "000000",           
-             "prediction" => "ham"},
+             "prediction" => "spam"},
             {"filename" => File.dirname(__FILE__)+"/data/spam.csv",
              "options" => {"fields" => {"000001" => {"optype" => "text", "term_analysis" => {"case_sensitive"=> true, "stem_words" => true, "use_stopwords" => false, "language" => "en"}}}},
              "data_input" => {"Message" => "A normal message"},
@@ -466,7 +466,7 @@ class TestComparePrediction < Test::Unit::TestCase
   def test_scenario7
      data = [
             ['data/spam.csv', {"fields" => {"000001" => {"optype" => "text", "term_analysis" => {"token_mode" => "full_terms_only", "language" => "en"}}}}, {"Message" => "A normal message"}, 'ham', 0.9169, "000000"],
-            #['data/spam.csv', {"fields" => {"000001" => {"optype" => "text", "term_analysis" => {"token_mode" => "all", "language" => "en"}}}}, {"Message" => "mobile"}, 'ham', 0.815, "000000"],
+            ['data/spam.csv', {"fields" => {"000001" => {"optype" => "text", "term_analysis" => {"token_mode" => "all", "language" => "en"}}}}, {"Message" => "mobile"}, 'ham', 0.8057, "000000"],
             ['data/movies.csv', {"fields" => {"000007" => {"optype" => "items", "item_analysis" => {"separator" => "$"}}}}, {"gender" => "Female", "genres" => "Adventure$Action", "timestamp" => 993906291, "occupation" => "K-12 student", "zipcode" => 59583, "rating" => 3}, 'Under 18', 0.8393, '000002']
             ]
      puts ""
@@ -751,7 +751,7 @@ class TestComparePrediction < Test::Unit::TestCase
                                                    "item_analysis" => {"separator"=> "$"}},
                                                    "000008"=> {"name"=> "timestamp", "optype"=> "numeric"},
                                                    "000009"=> {"name"=> "rating", "optype"=> "categorical"}},
-                                                   "source_parser"=> {"separator" => ";"}}, {"timestamp" => 999999999}, "4", 0.4028, "000009", {"balance_fields" => false}],
+                                                   "source_parser"=> {"separator" => ";"}}, {"timestamp" => 999999999}, "4", 0.4053, "000009", {"balance_fields" => false}],
             ['data/movies.csv', {"fields" => {"000000"=> {"name"=> "user_id", "optype"=> "numeric"},
                                                    "000001"=> {"name"=> "gender", "optype"=> "categorical"},
                                                    "000002"=> {"name"=> "age_range", "optype"=> "categorical"},
@@ -763,7 +763,7 @@ class TestComparePrediction < Test::Unit::TestCase
                                                   "item_analysis"=> {"separator"=> "$"}},
                                                   "000008"=> {"name"=> "timestamp", "optype"=> "numeric"},
                                                   "000009"=> {"name"=> "rating", "optype"=> "categorical"}},
-                                                 "source_parser"=> {"separator"=> ";"}}, {"timestamp"=> 999999999}, "4", 0.2622, "000009", {"normalize"=> true}],
+                                                 "source_parser"=> {"separator"=> ";"}}, {"timestamp"=> 999999999}, "4", 0.2623, "000009", {"normalize"=> true}],
             ['data/movies.csv', {"fields"=> {"000000"=> {"name"=> "user_id", "optype"=> "numeric"},
                                                    "000001"=> {"name"=> "gender", "optype"=> "categorical"},
                                                    "000002"=> {"name"=> "age_range", "optype"=> "categorical"},
@@ -775,7 +775,7 @@ class TestComparePrediction < Test::Unit::TestCase
                                                    "item_analysis"=> {"separator"=> "$"}},
                                                    "000008"=> {"name"=> "timestamp", "optype"=> "numeric"},
                                                    "000009"=> {"name"=> "rating", "optype"=> "categorical"}},
-                                                   "source_parser"=> {"separator"=> ";"}}, {"timestamp"=> 999999999}, "4", 0.2622, "000009", {"balance_fields"=> true, "normalize"=> true}] 
+                                                   "source_parser"=> {"separator"=> ";"}}, {"timestamp"=> 999999999}, "4", 0.2623, "000009", {"balance_fields"=> true, "normalize"=> true}] 
             ]
 
      puts
