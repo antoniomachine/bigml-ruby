@@ -463,76 +463,6 @@ class TestComparePrediction < Test::Unit::TestCase
      end
   end
 
-  def test_scenario7
-     data = [
-            ['data/spam.csv', {"fields" => {"000001" => {"optype" => "text", "term_analysis" => {"token_mode" => "full_terms_only", "language" => "en"}}}}, {"Message" => "A normal message"}, 'ham', 0.9169, "000000"],
-            ['data/spam.csv', {"fields" => {"000001" => {"optype" => "text", "term_analysis" => {"token_mode" => "all", "language" => "en"}}}}, {"Message" => "mobile"}, 'ham', 0.8057, "000000"],
-            ['data/movies.csv', {"fields" => {"000007" => {"optype" => "items", "item_analysis" => {"separator" => "$"}}}}, {"gender" => "Female", "genres" => "Adventure$Action", "timestamp" => 993906291, "occupation" => "K-12 student", "zipcode" => 59583, "rating" => 3}, 'Under 18', 0.8393, '000002']
-            ]
-     puts ""
-     puts "Scenario: Successfully comparing predictions with text options"
-
-     data.each do |filename, options, data_input, prediction_result, probability, objective|
-        puts
-        puts "Given I create a data source uploading a <%s> file" % filename
-
-        source = @api.create_source(File.dirname(__FILE__)+"/"+filename, {'name'=> 'source_test', 'project'=> @project["resource"]})
-
-        puts "And I wait until the source is ready"
-        assert_equal(BigML::HTTP_CREATED, source["code"])
-        assert_equal(1, source["object"]["status"]["code"])
-        assert_equal(@api.ok(source), true)
-
-        puts "And I update the source with params <%s>" % JSON.generate(options)
-        source = @api.update_source(source, options)
-        assert_equal(BigML::HTTP_ACCEPTED, source["code"])
-        assert_equal(@api.ok(source), true)
-
-        puts "And I create a dataset"
-        dataset=@api.create_dataset(source)
-
-        puts "And I wait until the dataset is ready"
-        assert_equal(BigML::HTTP_CREATED, dataset["code"])
-        assert_equal(1, dataset["object"]["status"]["code"])
-        assert_equal(@api.ok(dataset), true)
-        puts "And I create a logistic regression model with objective <%s>" % objective
-        logistic_regression = @api.create_logisticregression(dataset, {'objective_field' => objective})
-        
-        puts "And I wait until the logistic regression model is ready"
-        assert_equal(BigML::HTTP_CREATED, logistic_regression["code"])
-        assert_equal(@api.ok(logistic_regression), true)
-
-        puts "And I create a local logistic regression model"
-        localLogisticRegression = BigML::Logistic.new(logistic_regression)
-
-        puts "When I create a logistic regression prediction for <%s>" % JSON.generate(data_input)
-        prediction = @api.create_prediction(logistic_regression, data_input)
-        assert_equal(BigML::HTTP_CREATED, prediction["code"])
-
-        puts "Then the logistic regression prediction is <%s>" % prediction_result
-        assert_equal(prediction_result, prediction["object"]["output"])
-
-        puts "And the logistic regression probability for the prediction is <%s>" % probability
-
-        prediction["object"]["probabilities"].each do |prediction_value, remote_probability|
-           if prediction_value == prediction["object"]["output"]
-              assert_equal(remote_probability.to_f.round(3),probability.round(3))
-              break
-           end
-        end
-
-        puts "And I create a local logistic regression prediction for <%s>" % JSON.generate(data_input)
-        local_prediction = localLogisticRegression.predict(data_input, {"full" => true})
-
-        puts "Then the local logistic regression prediction is <%s>" % prediction_result
-        assert_equal(prediction_result, local_prediction["prediction"])
-
-        puts "And the local logistic regression probability for the prediction is <%s>" % probability
-        assert_equal(probability.round(4), local_prediction["probability"].round(4))
-
-     end
-  end
-
   def test_scenario8
      data = [
              ['data/text_missing.csv', {"fields" => {"000001" => {"optype" => "text", "term_analysis" => {"token_mode" => "all", "language" => "en"}}, "000000" => {"optype" => "text", "term_analysis" => {"token_mode" => "all", "language" => "en"}}}}, {}, "000003",'swap'],
@@ -1058,6 +988,69 @@ class TestComparePrediction < Test::Unit::TestCase
         assert_equal(prediction, item["prediction"])
       
     end
+  end
+  
+  # Successfully comparing predictions with text options
+  def test_scenario15
+     data = [['data/iris.csv', {"weight_field" => "000000", "missing_numerics" => false}, {"petal width" => 1.5, "petal length" => 2, "sepal width" => 1}, 'Iris-versicolor', 0.9547, '000004']]
+     puts ""
+     puts "Scenario: Successfully comparing predictions with text options"
+
+     data.each do |filename, parms, data_input, prediction_result, probability, objective|
+        puts
+        puts "Given I create a data source uploading a <%s> file" % filename
+
+        source = @api.create_source(File.dirname(__FILE__)+"/"+filename, {'name'=> 'source_test', 'project'=> @project["resource"]})
+
+        puts "And I wait until the source is ready"
+        assert_equal(BigML::HTTP_CREATED, source["code"])
+        assert_equal(1, source["object"]["status"]["code"])
+        assert_equal(@api.ok(source), true)
+
+        puts "And I create a dataset"
+        dataset=@api.create_dataset(source)
+
+        puts "And I wait until the dataset is ready"
+        assert_equal(BigML::HTTP_CREATED, dataset["code"])
+        assert_equal(1, dataset["object"]["status"]["code"])
+        assert_equal(@api.ok(dataset), true)
+        
+        puts "And I create a logistic regression model with objective <%s> and params <%s>" % [objective, parms]
+        logistic_regression = @api.create_logisticregression(dataset, {'objective_field' => objective}.merge(parms))
+        
+        puts "And I wait until the logistic regression model is ready"
+        assert_equal(BigML::HTTP_CREATED, logistic_regression["code"])
+        assert_equal(@api.ok(logistic_regression), true)
+
+        puts "And I create a local logistic regression model"
+        localLogisticRegression = BigML::Logistic.new(logistic_regression)
+
+        puts "When I create a logistic regression prediction for <%s>" % JSON.generate(data_input)
+        prediction = @api.create_prediction(logistic_regression, data_input)
+        assert_equal(BigML::HTTP_CREATED, prediction["code"])
+
+        puts "Then the logistic regression prediction is <%s>" % prediction_result
+        assert_equal(prediction_result, prediction["object"]["output"])
+
+        puts "And the logistic regression probability for the prediction is <%s>" % probability
+
+        prediction["object"]["probabilities"].each do |prediction_value, remote_probability|
+           if prediction_value == prediction["object"]["output"]
+              assert_equal(remote_probability.to_f.round(3),probability.round(3))
+              break
+           end
+        end
+
+        puts "And I create a local logistic regression prediction for <%s>" % JSON.generate(data_input)
+        local_prediction = localLogisticRegression.predict(data_input, {"full" => true})
+
+        puts "Then the local logistic regression prediction is <%s>" % prediction_result
+        assert_equal(prediction_result, local_prediction["prediction"])
+
+        puts "And the local logistic regression probability for the prediction is <%s>" % probability
+        assert_equal(probability.round(4), local_prediction["probability"].round(4))
+
+     end
   end
      
 

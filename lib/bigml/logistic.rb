@@ -91,6 +91,8 @@ module BigML
          begin
             @input_fields =  logistic_regression.fetch("input_fields", [])
             @dataset_field_types =  logistic_regression.fetch("dataset_field_types", {})
+            @weight_field = logistic_regression.fetch("weight_field", nil)
+            
             if !logistic_regression['objective_fields'].nil?
                objective_field = logistic_regression['objective_fields']
             else
@@ -340,7 +342,7 @@ module BigML
          # In case that missing_numerics is False, checks that all numeric
          # fields are present in input data.
          if @missing_numerics == false
-           BigML::Util::check_no_missing_numerics(input_data, @fields)
+           BigML::Util::check_no_missing_numerics(input_data, @fields, @weight_field)
          end
          
          if !@balance_fields.nil? and @balance_fields

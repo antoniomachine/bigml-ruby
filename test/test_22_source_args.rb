@@ -19,10 +19,10 @@ class TestSourceArgs < Test::Unit::TestCase
   def test_scenario1
     data = [{"filename" => File.dirname(__FILE__)+"/data/iris.csv",
              "params" => {"tags" => ["my tag", "my second tag"], 
-                          "project" => @project["resource"]}}]
-            #{"filename" => "./data/iris.csv",
-            # "params" => {"name" => "Testing unicode names: áé",
-            #              "project" =>  @project["resource"]}}]
+                          "project" => @project["resource"]}},
+            {"filename" => "./data/iris.csv",
+             "params" => {"name" => "Testing unicode names: áé",
+                          "project" =>  @project["resource"]}}]
 
     puts
     puts "Scenario: Uploading source with structured args" 

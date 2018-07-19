@@ -576,8 +576,8 @@ class Test33ComparePredictions < Test::Unit::TestCase
      def test_scenario9
         data = [[File.dirname(__FILE__)+'/data/iris.csv', {}, '000004', 
                 'Iris-virginica', 0.33784, {"boosting" => {"iterations" => 5}}, {}],
-                #[File.dirname(__FILE__)+'/data/iris.csv', {}, '000004', 
-                #'Iris-versicolor', 0.27261, {"number_of_models" => 5}, {"operating_kind" => "confidence"}]
+                [File.dirname(__FILE__)+'/data/iris.csv', {}, '000004', 
+                'Iris-versicolor', 0.2923, {"number_of_models" => 5}, {"operating_kind" => "confidence"}]
                 ]
         
         puts
@@ -603,7 +603,7 @@ class Test33ComparePredictions < Test::Unit::TestCase
           assert_equal(1, dataset["object"]["status"]["code"])
           assert_equal(@api.ok(dataset), true)
           
-          puts "And I create an ensemble with <%s>" % JSON.generate(params)
+          puts "And I create an ensemble with <%s>" % JSON.generate(params.merge(extra_params))
           ensemble = @api.create_ensemble(dataset, params.merge(extra_params))
          
           puts "And I wait until the ensemble is ready"
@@ -625,7 +625,7 @@ class Test33ComparePredictions < Test::Unit::TestCase
           assert_equal(prediction['object']['prediction'][objective].to_f.round(4), prediction_result.to_f.round(4))
           
           puts "And the confidence for the prediction is <%s>" % confidence
-          
+
           local_confidence = prediction['object'].key?('confidence') ? 
                                    prediction['object']['confidence'] : 
                                    prediction['object']['probability']

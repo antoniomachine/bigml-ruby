@@ -2,6 +2,11 @@
 
 History
 -------
+0.0.10 (2018-07-18)
+~~~~~~~~~~~~~~~~~~
+ - Fixing local logistic regression predictions with weight field missing in
+   input data
+
 0.0.9 (2018-06-30)
  - Modifying local fusion object to adapt to logistic regressions with
    no missing numerics allowed.

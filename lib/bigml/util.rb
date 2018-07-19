@@ -313,10 +313,12 @@ module BigML
      end 
      
      
-     def check_no_missing_numerics(input_data,fields)
+     def check_no_missing_numerics(input_data,fields,weight_field=nil)
        # Checks whether some numeric fields are missing in the input data
        fields.each do |field_id, field|
-         if field['optype'] == BigML::Util::NUMERIC and !input_data.key?(field_id)
+         if field['optype'] == BigML::Util::NUMERIC and 
+            (weight_field.nil? or field_id != weight_field) and 
+            !input_data.key?(field_id)
            raise ArgumentError, "Failed to predict. Input  data must contain 
                                  values for all numeric fields to get a 
                                  logistic regression prediction."
